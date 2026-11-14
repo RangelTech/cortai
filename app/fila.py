@@ -1,0 +1,115 @@
+"""Fila de trabalhos: threads que pegam o próximo pedido em 'fila' e rodam o pipeline. Limpeza de arquivos antigos."""
+from __future__ import annotations
+
+import json
+import logging
+import threading
+import time
+import uuid
+from pathlib import Path
+
+from app import mailer, pipeline
+from app.config import Config
+from app.db import Banco, agora
+
+log = logging.getLogger("cortai.fila")
+
+
+def pasta_trabalho(cfg: Config, tid: str) -> Path:
+    return Path(cfg.dados) / "trabalhos" / tid
+
+
+def criar(db: Banco, usuario: int, tipo: str, entrada: dict) -> str:
+    tid = uuid.uuid4().hex[:16]
+    db.exec("INSERT INTO trabalhos(id,usuario,tipo,entrada,criado) VALUES(?,?,?,?,?)", (tid, usuario, tipo, json.dumps(entrada, ensure_ascii=False), agora()))
+    return tid
+
+
+def posicao(db: Banco, tid: str) -> int:
+    t = db.um("SELECT criado FROM trabalhos WHERE id=?", (tid,))
+    if not t:
+        return 0
+    return db.um("SELECT COUNT(*) n FROM trabalhos WHERE estado='fila' AND criado<?", (t["criado"],))["n"]
+
+
+def _pegar(db: Banco) -> dict | None:
+    with db.tx() as c:
+        r = c.execute("SELECT * FROM trabalhos WHERE estado='fila' ORDER BY criado LIMIT 1").fetchone()
+        if not r:
+            return None
+        c.execute("UPDATE trabalhos SET estado='rodando', etapa='Começando', progresso=0.01 WHERE id=?", (r["id"],))
+        return dict(r)
+
+
+def _rodar(db: Banco, cfg: Config, t: dict) -> None:
+    tid = t["id"]
+    entrada = json.loads(t["entrada"])
+    pasta = pasta_trabalho(cfg, tid)
+
+    def avisar(etapa: str, prog: float) -> None:
+        db.exec("UPDATE trabalhos SET etapa=?, progresso=? WHERE id=?", (etapa, round(prog, 3), tid))
+
+    try:
+        if pipeline.disco_livre(cfg.dados) < 3 * 1024**3:
+            raise pipeline.ErroUsuario("Estamos com muitos pedidos agora. Tente de novo em alguns minutos.")
+        if t["tipo"] == "cortes":
+            res = pipeline.cortes_de_link(entrada["url"], pasta, cfg, avisar, int(entrada.get("quantos") or 3))
+        else:
+            raise pipeline.ErroUsuario("Esse tipo de pedido ainda não está disponível.")
+        db.exec("UPDATE trabalhos SET estado='pronto', etapa='Pronto', progresso=1, resultado=?, fim=? WHERE id=?",
+                (json.dumps(res, ensure_ascii=False), agora(), tid))
+        u = db.um("SELECT email FROM usuarios WHERE id=?", (t["usuario"],))
+        if u and res.get("cortes"):
+            mailer.pronto(cfg, u["email"], len(res["cortes"]), res["video"]["titulo"][:80])
+    except pipeline.ErroUsuario as e:
+        db.exec("UPDATE trabalhos SET estado='erro', etapa='Não deu certo', erro=?, fim=? WHERE id=?", (str(e), agora(), tid))
+        pipeline.limpar_pasta(pasta)
+    except Exception as e:  # noqa: BLE001
+        log.exception("trabalho %s falhou", tid)
+        db.exec("UPDATE trabalhos SET estado='erro', etapa='Não deu certo', erro=?, fim=? WHERE id=?",
+                ("Algo deu errado do nosso lado. Esse pedido não conta no seu limite; tente de novo.", agora(), tid))
+        db.exec("UPDATE trabalhos SET entrada=json_set(entrada,'$.falha_tecnica',?) WHERE id=?", (str(e)[:500], tid))
+        pipeline.limpar_pasta(pasta)
+
+
+def _laco(db: Banco, cfg: Config, parar: threading.Event) -> None:
+    while not parar.is_set():
+        t = _pegar(db)
+        if not t:
+            parar.wait(2)
+            continue
+        _rodar(db, cfg, t)
+
+
+def limpar_antigos(db: Banco, cfg: Config) -> int:
+    """Apaga arquivos de trabalhos com mais de N dias (o relatório fica no banco; os vídeos somem)."""
+    limite = agora() - cfg.guardar_dias * 86400
+    n = 0
+    for t in db.todos("SELECT id FROM trabalhos WHERE fim IS NOT NULL AND fim<? AND (entrada NOT LIKE '%\"apagado\"%')", (limite,)):
+        pipeline.limpar_pasta(pasta_trabalho(cfg, t["id"]))
+        db.exec("UPDATE trabalhos SET entrada=json_set(entrada,'$.apagado',1) WHERE id=?", (t["id"],))
+        n += 1
+    return n
+
+
+def iniciar(db: Banco, cfg: Config) -> threading.Event:
+    # pedido que estava rodando quando o serviço caiu volta para a fila
+    db.exec("UPDATE trabalhos SET estado='fila', etapa='', progresso=0 WHERE estado='rodando'")
+    parar = threading.Event()
+    for i in range(max(1, cfg.workers)):
+        threading.Thread(target=_laco, args=(db, cfg, parar), name=f"fila-{i}", daemon=True).start()
+
+    def faxina():
+        while not parar.wait(3600):
+            try:
+                limpar_antigos(db, cfg)
+            except Exception:  # noqa: BLE001
+                log.exception("faxina falhou")
+    threading.Thread(target=faxina, name="faxina", daemon=True).start()
+    return parar
+
+
+def usados_no_mes(db: Banco, usuario: int) -> int:
+    inicio = time.time() - 30 * 86400
+    return db.um("SELECT COUNT(*) n FROM trabalhos WHERE usuario=? AND criado>? AND NOT (estado='erro' AND entrada LIKE '%falha_tecnica%')",
+                 (usuario, inicio))["n"]
