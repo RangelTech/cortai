@@ -21,6 +21,15 @@ logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(name
 ESTATICO = Path(__file__).resolve().parent.parent / "static"
 COOKIE = "cortai_s"
 RE_URL = re.compile(r"^https?://[^\s]{6,500}$")
+# Planos (preço de lançamento). videos_mes = pedidos por mês (link, animação ou clone).
+PLANOS = {
+    "start": {"nome": "Start", "preco": 19.90, "depois": 29.90, "videos_mes": 15,
+              "itens": ["15 vídeos por mês (até 5 cortes cada)", "Legenda, gancho e relatório em todos", "Animação por texto"]},
+    "pro": {"nome": "Pro", "preco": 29.90, "depois": 39.90, "videos_mes": 60,
+            "itens": ["60 vídeos por mês (até 5 cortes cada)", "Animação por texto e clone de Reels", "Vídeos de até 1 hora", "Kit de post com legenda e hashtags"]},
+    "turbo": {"nome": "Turbo", "preco": 59.90, "depois": 79.90, "videos_mes": 200,
+              "itens": ["200 vídeos por mês", "Fila prioritária", "Tudo do Pro", "Para quem vende cortes para outros criadores"]},
+}
 
 
 def criar_app(cfg: Config | None = None, iniciar_fila: bool = True) -> FastAPI:
@@ -41,9 +50,13 @@ def criar_app(cfg: Config | None = None, iniciar_fila: bool = True) -> FastAPI:
     def resumo_conta(u: dict) -> dict:
         assin = auth.assinante(u)
         usados = fila.usados_no_mes(db, u["id"])
-        limite = cfg.trabalhos_mes if assin else cfg.trabalhos_teste
+        pl = PLANOS.get(u["plano"]) or PLANOS["pro"]
+        limite = pl["videos_mes"] if assin else cfg.trabalhos_teste
         return {"email": u["email"], "assinante": assin, "plano": u["plano"] if assin else "teste", "ativo_ate": u["ativo_ate"],
-                "usados": usados, "limite": limite, "restam": max(0, limite - usados), "checkout": cfg.checkout_mensal}
+                "usados": usados, "limite": limite, "restam": max(0, limite - usados), "checkout": cfg.checkout_mensal, "planos": planos_publicos()}
+
+    def planos_publicos() -> list[dict]:
+        return [{"codigo": k, **v, "checkout": cfg.checkouts.get(k) or "", "lancamento_ate": cfg.lancamento_ate} for k, v in PLANOS.items()]
 
     @app.get("/health")
     def health():
@@ -88,6 +101,10 @@ def criar_app(cfg: Config | None = None, iniciar_fila: bool = True) -> FastAPI:
         resp.delete_cookie(COOKIE, path="/")
         return resp
 
+    @app.get("/api/planos")
+    def planos():
+        return {"planos": planos_publicos()}
+
     @app.get("/api/conta")
     def conta(request: Request):
         return resumo_conta(usuario(request))
@@ -120,7 +137,9 @@ def criar_app(cfg: Config | None = None, iniciar_fila: bool = True) -> FastAPI:
             raise HTTPException(422, "conte em uma ou duas frases o vídeo que você quer")
         c = resumo_conta(u)
         if c["restam"] <= 0:
-            raise HTTPException(402, "assine para continuar" if not c["assinante"] else "você usou todos os cortes deste mês")
+            raise HTTPException(402, "escolha um plano para começar a criar" if not c["assinante"] else "você usou todos os vídeos do seu plano neste mês; suba de plano para continuar")
+        if tipo == "clonar" and c["plano"] == "start":
+            raise HTTPException(402, "clonar Reels faz parte dos planos Pro e Turbo")
         abertos = db.um("SELECT COUNT(*) n FROM trabalhos WHERE usuario=? AND estado IN ('fila','rodando')", (u["id"],))["n"]
         if abertos >= 2:
             raise HTTPException(429, "espere um dos seus pedidos terminar para mandar outro")
@@ -181,7 +200,8 @@ def criar_app(cfg: Config | None = None, iniciar_fila: bool = True) -> FastAPI:
         u = auth.usuario_por_email(db, email)
         if evento in ("purchase_approved", "subscription_renewed", "subscription_created"):
             base = max(agora(), u["ativo_ate"])
-            db.exec("UPDATE usuarios SET plano='mensal', ativo_ate=?, pedido=? WHERE id=?", (base + 32 * 86400, str(dados.get("id") or ""), u["id"]))
+            plano = cfg.planos_por_produto.get(str((dados.get("product") or {}).get("id") or ""), "pro")
+            db.exec("UPDATE usuarios SET plano=?, ativo_ate=?, pedido=? WHERE id=?", (plano, base + 32 * 86400, str(dados.get("id") or ""), u["id"]))
             return {"ok": True, "liberado": email}
         if evento in ("refund", "chargeback", "subscription_canceled", "subscription_cancelled"):
             db.exec("UPDATE usuarios SET ativo_ate=? WHERE id=?", (agora(), u["id"]))

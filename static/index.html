@@ -20,8 +20,8 @@
     <span class="selo"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M8.5 14.5A2.5 2.5 0 0 0 11 12c0-1.38-.5-2-1-3-1.07-2.14-.22-4.05 2-6 .5 2.5 2 4.9 4 6.5 2 1.6 3 3.5 3 5.5a7 7 0 1 1-14 0c0-1.15.43-2.29 1-3a2.5 2.5 0 0 0 2.5 2.5z"/></svg> Renda extra com cortes</span>
     <h1>Cole um link.<br>Receba <em>cortes virais</em> prontos.</h1>
     <p class="sub">O Cortaí assiste o vídeo por você, acha os momentos que prendem, corta no formato vertical, coloca legenda e gancho, e ainda diz por que cada corte tem chance de viralizar.</p>
-    <div class="acoes"><button class="btn btn-pri" data-entrar>Fazer meu primeiro corte grátis</button><a class="btn btn-sec" href="#como">Ver como funciona</a></div>
-    <div class="prova"><span><b>YouTube</b>, Instagram, TikTok</span><span>Pronto em <b>poucos minutos</b></span><span><b>1 corte grátis</b>, sem cartão</span></div>
+    <div class="acoes"><a class="btn btn-pri" href="#preco">Quero começar agora</a><a class="btn btn-sec" href="#como">Ver como funciona</a></div>
+    <div class="prova"><span><b>YouTube</b>, Instagram, TikTok</span><span>Pronto em <b>poucos minutos</b></span><span>Garantia de <b>7 dias</b></span></div>
   </div>
   <div class="celulares" aria-hidden="true">
     <div class="cel"><div class="img" style="background-image:linear-gradient(160deg,#3b1d2a,#141420)"></div><div class="g">ELE PERDEU TUDO</div><div class="l">E EM <b>6 MESES</b></div></div>
@@ -68,20 +68,30 @@
   </div>
 </div></section>
 
-<section id="preco" style="background:var(--bg2)"><div class="wrap">
-  <div class="titulo-sec"><h2>Preço de quem quer começar</h2><p>Teste grátis. Assine só se gostar.</p></div>
-  <div class="preco">
-    <div class="display" style="font-size:20px">Plano Cortaí</div>
-    <div class="valor">R$ 29,90<small>/mês</small></div>
-    <div style="color:var(--mut)">Cancele quando quiser</div>
-    <ul class="lista-ok">
-      <li>Até 60 vídeos por mês, até 5 cortes por vídeo</li>
-      <li>Vídeos de até 1 hora</li>
-      <li>Legenda, gancho e relatório em todos os cortes</li>
-      <li>Animação narrada por texto e clone de Reels</li>
-    </ul>
-    <button class="btn btn-pri" style="width:100%" data-entrar>Começar com 1 corte grátis</button>
+<section id="ganhos"><div class="wrap calc">
+  <div>
+    <span class="selo">Faça a conta</span>
+    <h2 style="font-size:clamp(28px,3.4vw,40px)">Quanto dá para ganhar com cortes?</h2>
+    <p style="color:var(--mut)">Dois jeitos de fazer dinheiro com o Cortaí: postar nos seus perfis (TikTok, Reels, Shorts e Kwai pagam por visualização) e vender pacotes de cortes para criadores. Mexa nos números.</p>
+    <label for="c-dia">Vídeos postados por dia: <b id="c-dia-v">3</b></label><input type="range" id="c-dia" min="1" max="10" value="3">
+    <label for="c-views">Visualizações médias por vídeo: <b id="c-views-v">10 mil</b></label><input type="range" id="c-views" min="1" max="100" value="10">
+    <label for="c-cli">Criadores para quem você vende cortes: <b id="c-cli-v">2</b></label><input type="range" id="c-cli" min="0" max="10" value="2">
   </div>
+  <div class="calc-res">
+    <span>Você pode chegar a</span>
+    <div class="calc-n" id="c-mes">R$ 0</div>
+    <span>por mês</span>
+    <div class="calc-lin"><span>Monetização dos vídeos</span><b id="c-mon">R$ 0</b></div>
+    <div class="calc-lin"><span>Venda de cortes</span><b id="c-vend">R$ 0</b></div>
+    <p class="calc-base">Conta: vídeos/dia × 30 dias × visualizações × R$ 1,50 a cada mil (média estimada dos programas de criadores), mais R$ 300 por criador (pacote de 20 cortes a R$ 15).</p>
+    <a class="btn btn-pri" href="#preco" style="width:100%">Quero começar</a>
+  </div>
+</div></section>
+
+<section id="preco" style="background:var(--bg2)"><div class="wrap">
+  <div class="titulo-sec"><span class="selo urg">Preço de lançamento até <b id="lanc-data">30/11</b></span><h2 style="margin-top:12px">Escolha seu plano</h2><p>Comece hoje. Se não gostar, a garantia de 7 dias devolve seu dinheiro.</p></div>
+  <div class="precos" id="planos"><div class="vazio">Carregando os planos…</div></div>
+  <p style="max-width:720px;margin:24px auto 0;text-align:center;color:var(--mut);font-size:13px">Os ganhos são simulações: dependem de quanto você posta, do engajamento e das regras de cada plataforma. Pague com o mesmo e-mail que vai usar para entrar.</p>
 </div></section>
 
 <section id="faq"><div class="wrap">
@@ -118,5 +128,6 @@
   </div>
 </div>
 <script src="/s/entrar.js"></script>
+<script src="/s/vendas.js"></script>
 </body>
 </html>

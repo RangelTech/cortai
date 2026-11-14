@@ -17,12 +17,24 @@
 
   async function carregarConta() {
     conta = await api('/api/conta')
-    $('#cota').innerHTML = conta.assinante ? `<b>${conta.restam}</b> de ${conta.limite} vídeos neste mês` : `<b>${conta.restam}</b> corte grátis`
+    $('#cota').innerHTML = conta.assinante ? `<b>${conta.restam}</b> de ${conta.limite} vídeos neste mês` : "Sem plano ativo"
     const f = $('#aviso-assinar')
-    if (!conta.assinante && conta.restam <= 0) {
+    const brl2 = (v) => 'R$ ' + Number(v || 0).toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })
+    if (!conta.assinante) {
       f.hidden = false
-      f.innerHTML = `<span>Você já usou o corte grátis. Assine para continuar criando: <b>R$ 29,90/mês</b>, até 60 vídeos.</span>${conta.checkout ? `<a class="btn btn-pri" href="${esc(conta.checkout)}" target="_blank" rel="noopener">Assinar agora</a>` : ''}`
-    } else f.hidden = true
+      f.className = 'faixa planos-faixa'
+      f.innerHTML = `<div><b class="display" style="font-size:20px">Escolha seu plano para começar a criar</b><div style="color:var(--mut);font-size:14px;margin-top:4px">Preço de lançamento por tempo limitado. Pague com este mesmo e-mail (${esc(conta.email)}): o plano libera sozinho em segundos.</div></div>
+        <div class="mini-planos">${conta.planos.map((p, i) => `<a class="mp ${i === 1 ? 'dest' : ''}" href="${esc(p.checkout || '#')}" target="_blank" rel="noopener"><b>${esc(p.nome)}</b><span>${brl2(p.preco)}/mês</span><small>${p.videos_mes} vídeos</small></a>`).join('')}</div>`
+    } else if (conta.restam <= 0) {
+      f.hidden = false
+      f.className = 'faixa'
+      f.innerHTML = '<span>Você usou todos os vídeos do seu plano neste mês. Suba de plano para continuar.</span>' + conta.planos.filter((p) => p.videos_mes > conta.limite).map((p) => `<a class="btn btn-pri" href="${esc(p.checkout)}" target="_blank" rel="noopener">${esc(p.nome)}: ${p.videos_mes} vídeos</a>`).join('')
+    } else {
+      f.hidden = false
+      f.className = 'faixa potencial'
+      const mon = conta.limite * 3 * 10 * 1.5
+      f.innerHTML = `<span>Seu plano dá <b>${conta.limite} vídeos</b> por mês, até ${conta.limite * 3} cortes. Com 10 mil visualizações por corte, isso pode render até <b>R$ ${mon.toLocaleString('pt-BR', { maximumFractionDigits: 0 })}</b> por mês nos programas de criadores.</span>`
+    }
   }
 
   function cartaoCorte(t, c, k) {

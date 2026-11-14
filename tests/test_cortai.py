@@ -14,9 +14,15 @@ from app.main import criar_app
 
 @pytest.fixture()
 def cli(tmp_path):
-    cfg = Config(dados=str(tmp_path), dev=True, segredo_sessao="s", cakto_segredo="segredo-cakto", checkout_mensal="https://pay.cakto/x")
+    cfg = Config(dados=str(tmp_path), dev=True, segredo_sessao="s", cakto_segredo="segredo-cakto", checkout_mensal="https://pay.cakto/x",
+                 planos_por_produto={"prod-start": "start", "prod-turbo": "turbo"}, checkouts={"start": "https://pay/s"})
     app = criar_app(cfg, iniciar_fila=False)
     return TestClient(app), app
+
+
+def assinar(c, email="ana@exemplo.com", produto="prod-start"):
+    r = c.post("/api/cakto", json={"secret": "segredo-cakto", "event": "purchase_approved", "data": {"id": "p-" + email + produto, "customer": {"email": email}, "product": {"id": produto}}})
+    assert r.status_code == 200
 
 
 def entrar(c, email="ana@exemplo.com"):
@@ -32,7 +38,8 @@ def test_login_codigo_e_sessao(cli):
     assert c.get("/api/conta").status_code == 401
     entrar(c)
     j = c.get("/api/conta").json()
-    assert j["email"] == "ana@exemplo.com" and j["assinante"] is False and j["restam"] == 1
+    assert j["email"] == "ana@exemplo.com" and j["assinante"] is False and j["restam"] == 0
+    assert [p["preco"] for p in j["planos"]] == [19.90, 29.90, 59.90] and j["planos"][0]["checkout"] == "https://pay/s"
 
 
 def test_codigo_errado_e_tentativas(cli):
@@ -55,19 +62,25 @@ def test_email_invalido(cli):
     assert c.post("/api/entrar/codigo", json={"email": "nao-e-email"}).status_code == 422
 
 
-def test_trabalho_cota_gratis(cli):
+def test_sem_plano_nao_cria_e_start_libera(cli):
     c, _ = cli
     entrar(c)
     assert c.post("/api/trabalhos", json={"url": "isso nao e link"}).status_code == 422
+    assert c.post("/api/trabalhos", json={"url": "https://www.youtube.com/watch?v=abc123"}).status_code == 402
+    assinar(c)
+    j = c.get("/api/conta").json()
+    assert j["plano"] == "start" and j["limite"] == 15
     r = c.post("/api/trabalhos", json={"url": "https://www.youtube.com/watch?v=abc123", "quantos": 3})
     assert r.status_code == 200 and r.json()["estado"] == "fila"
-    r = c.post("/api/trabalhos", json={"url": "https://www.youtube.com/watch?v=def456"})
-    assert r.status_code == 402
-    assert len(c.get("/api/trabalhos").json()["trabalhos"]) == 1
+    r = c.post("/api/trabalhos", json={"tipo": "animacao", "texto": "curiosidade sobre o polvo"})
+    assert r.status_code == 200 and r.json()["tipo"] == "animacao"
+    assert c.post("/api/trabalhos", json={"url": "https://youtu.be/xyz"}).status_code == 429  # 2 abertos por vez
+    assert len(c.get("/api/trabalhos").json()["trabalhos"]) == 2
 
 
 def test_trabalho_de_outro_usuario_invisivel(cli):
     c, app = cli
+    assinar(c)
     entrar(c)
     tid = c.post("/api/trabalhos", json={"url": "https://youtu.be/abc123"}).json()["id"]
     c2 = TestClient(app)
@@ -85,7 +98,7 @@ def test_cakto_libera_e_revoga(cli):
     assert c.post("/api/cakto", json=corpo).json()["repetido"] is True
     entrar(c)
     j = c.get("/api/conta").json()
-    assert j["assinante"] is True and j["limite"] == 60
+    assert j["assinante"] is True and j["limite"] == 60 and j["plano"] == "pro"  # produto fora do mapa: Pro
     c.post("/api/cakto", json={"secret": "segredo-cakto", "event": "refund", "data": {"id": "p1", "customer": {"email": "ana@exemplo.com"}}})
     assert c.get("/api/conta").json()["assinante"] is False
 

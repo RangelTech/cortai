@@ -2,7 +2,8 @@
 from __future__ import annotations
 
 import os
-from dataclasses import dataclass
+import json
+from dataclasses import dataclass, field
 
 
 @dataclass
@@ -20,7 +21,7 @@ class Config:
     smtp_from: str = "Cortaí <contato@rangeltech.net>"
     cakto_segredo: str = ""
     checkout_mensal: str = ""
-    trabalhos_teste: int = 1          # cortes grátis para quem ainda não assinou
+    trabalhos_teste: int = 0          # sem plano grátis (decisão do Lucas, 14/11)
     trabalhos_mes: int = 60           # limite do plano mensal
     max_duracao_s: int = 3600         # vídeo de entrada: até 1 h
     max_cortes: int = 5
@@ -28,6 +29,9 @@ class Config:
     guardar_dias: int = 7
     proxy: str = ""                    # proxy para o yt-dlp (opcional)
     dev: bool = False
+    checkouts: dict = field(default_factory=dict)          # {"start": url, "pro": url, "turbo": url}
+    planos_por_produto: dict = field(default_factory=dict)  # {"<id do produto Cakto>": plano}
+    lancamento_ate: str = "2026-11-30"
 
 
 def carregar() -> Config:
@@ -46,7 +50,7 @@ def carregar() -> Config:
         smtp_from=e("CORTAI_SMTP_FROM", "Cortaí <contato@rangeltech.net>"),
         cakto_segredo=e("CORTAI_CAKTO_SEGREDO", ""),
         checkout_mensal=e("CORTAI_CHECKOUT_MENSAL", ""),
-        trabalhos_teste=int(e("CORTAI_TRABALHOS_TESTE", "1")),
+        trabalhos_teste=int(e("CORTAI_TRABALHOS_TESTE", "0")),
         trabalhos_mes=int(e("CORTAI_TRABALHOS_MES", "60")),
         max_duracao_s=int(e("CORTAI_MAX_DURACAO_S", "3600")),
         max_cortes=int(e("CORTAI_MAX_CORTES", "5")),
@@ -54,4 +58,7 @@ def carregar() -> Config:
         guardar_dias=int(e("CORTAI_GUARDAR_DIAS", "7")),
         proxy=e("CORTAI_PROXY", ""),
         dev=e("CORTAI_DEV", "") == "1",
+        checkouts=json.loads(e("CORTAI_CHECKOUTS", "") or "{}"),
+        planos_por_produto=json.loads(e("CORTAI_PLANOS_CAKTO", "") or "{}"),
+        lancamento_ate=e("CORTAI_LANCAMENTO_ATE", "2026-11-30"),
     )
