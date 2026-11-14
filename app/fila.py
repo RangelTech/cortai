@@ -54,6 +54,9 @@ def _rodar(db: Banco, cfg: Config, t: dict) -> None:
             raise pipeline.ErroUsuario("Estamos com muitos pedidos agora. Tente de novo em alguns minutos.")
         if t["tipo"] == "cortes":
             res = pipeline.cortes_de_link(entrada["url"], pasta, cfg, avisar, int(entrada.get("quantos") or 3))
+        elif t["tipo"] == "clonar":
+            from app import clonar
+            res = clonar.clonar_reels(entrada["url"], entrada["texto"], pasta, cfg, avisar, entrada.get("voz") or "feminina")
         elif t["tipo"] == "animacao":
             from app import animacao
             res = animacao.animacao_de_texto(entrada["texto"], pasta, cfg, avisar, int(entrada.get("segundos") or 30), entrada.get("voz") or "feminina")

@@ -19,7 +19,7 @@
     <div class="abas" role="tablist">
       <button class="aba on" role="tab" aria-selected="true" data-aba="link">Cortes de um link</button>
       <button class="aba" role="tab" data-aba="texto">Animação por texto</button>
-      <button class="aba" role="tab" data-aba="reels">Clonar Reels <i>em breve</i></button>
+      <button class="aba" role="tab" data-aba="reels">Clonar Reels</button>
     </div>
     <form id="f-link" class="form-link">
       <input id="url" type="url" required placeholder="Cole aqui o link do vídeo (YouTube, Instagram, TikTok…)" autocomplete="off">
@@ -32,6 +32,15 @@
         <select id="segundos" aria-label="Duração"><option value="30">30 segundos</option><option value="15">15 segundos</option><option value="45">45 segundos</option><option value="60">60 segundos</option></select>
         <select id="voz" aria-label="Voz do narrador"><option value="feminina">Voz feminina</option><option value="masculina">Voz masculina</option></select>
         <button class="btn btn-pri" type="submit">Criar animação</button>
+      </div>
+    </form>
+    <form id="f-clonar" class="form-texto" hidden>
+      <input id="url-ref" type="url" required placeholder="Link do Reels, TikTok ou Shorts que você quer copiar o formato" autocomplete="off">
+      <textarea id="tema" rows="2" maxlength="1500" required placeholder="Sobre o que é o SEU vídeo? Ex.: 3 erros de quem começa a investir"></textarea>
+      <div class="linha-op">
+        <select id="voz-c" aria-label="Voz do narrador"><option value="feminina">Voz feminina</option><option value="masculina">Voz masculina</option></select>
+        <span></span>
+        <button class="btn btn-pri" type="submit">Clonar o formato</button>
       </div>
     </form>
     <div id="em-breve" class="em-breve" hidden>Estamos terminando esse modo. Assinantes recebem um e-mail quando ele chegar.</div>

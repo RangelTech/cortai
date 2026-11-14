@@ -96,7 +96,8 @@
       const qual = a.dataset.aba
       $('#f-link').hidden = qual !== 'link'
       $('#f-texto').hidden = qual !== 'texto'
-      $('#em-breve').hidden = qual !== 'reels'
+      $('#f-clonar').hidden = qual !== 'reels'
+      $('#em-breve').hidden = true
     }
   })
   $('#f-link').onsubmit = async (e) => {
@@ -120,6 +121,17 @@
       await api('/api/trabalhos', { method: 'POST', body: JSON.stringify({ tipo: 'animacao', texto: $('#texto').value.trim(), segundos: +$('#segundos').value, voz: $('#voz').value }) })
       $('#texto').value = ''
       msg('Pedido recebido! A animação fica pronta em poucos minutos.', 'ok')
+      await carregarConta()
+      listar()
+    } catch (err) { msg(err.message); if (err.status === 402) carregarConta() } finally { b.disabled = false }
+  }
+  $('#f-clonar').onsubmit = async (e) => {
+    e.preventDefault()
+    const b = e.submitter; b.disabled = true; msg('')
+    try {
+      await api('/api/trabalhos', { method: 'POST', body: JSON.stringify({ tipo: 'clonar', url: $('#url-ref').value.trim(), texto: $('#tema').value.trim(), voz: $('#voz-c').value }) })
+      $('#url-ref').value = ''; $('#tema').value = ''
+      msg('Pedido recebido! Vamos estudar o vídeo e recriar o formato com o seu tema.', 'ok')
       await carregarConta()
       listar()
     } catch (err) { msg(err.message); if (err.status === 402) carregarConta() } finally { b.disabled = false }
