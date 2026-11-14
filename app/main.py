@@ -110,19 +110,25 @@ def criar_app(cfg: Config | None = None, iniciar_fila: bool = True) -> FastAPI:
         u = usuario(request)
         b = await request.json()
         tipo = b.get("tipo") or "cortes"
-        if tipo != "cortes":
+        if tipo not in ("cortes", "animacao"):
             raise HTTPException(422, "esse tipo chega em breve")
         url = str(b.get("url") or "").strip()
-        if not RE_URL.match(url):
+        texto = str(b.get("texto") or "").strip()[:1500]
+        if tipo == "cortes" and not RE_URL.match(url):
             raise HTTPException(422, "cole o link completo do vídeo (começando com https://)")
+        if tipo == "animacao" and len(texto) < 8:
+            raise HTTPException(422, "conte em uma ou duas frases o vídeo que você quer")
         c = resumo_conta(u)
         if c["restam"] <= 0:
             raise HTTPException(402, "assine para continuar" if not c["assinante"] else "você usou todos os cortes deste mês")
         abertos = db.um("SELECT COUNT(*) n FROM trabalhos WHERE usuario=? AND estado IN ('fila','rodando')", (u["id"],))["n"]
         if abertos >= 2:
             raise HTTPException(429, "espere um dos seus pedidos terminar para mandar outro")
-        quantos = max(1, min(cfg.max_cortes, int(b.get("quantos") or 3)))
-        tid = fila.criar(db, u["id"], "cortes", {"url": url, "quantos": quantos})
+        if tipo == "animacao":
+            entrada = {"texto": texto, "segundos": max(15, min(60, int(b.get("segundos") or 30))), "voz": "masculina" if b.get("voz") == "masculina" else "feminina"}
+        else:
+            entrada = {"url": url, "quantos": max(1, min(cfg.max_cortes, int(b.get("quantos") or 3)))}
+        tid = fila.criar(db, u["id"], tipo, entrada)
         return publico(db.um("SELECT * FROM trabalhos WHERE id=?", (tid,)))
 
     @app.get("/api/trabalhos")

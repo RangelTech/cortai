@@ -43,3 +43,8 @@
 .dicas b{color:var(--fg)}
 .dicas ul{margin:6px 0 0;padding-left:18px}
 @media (max-width:640px){.form-link{grid-template-columns:1fr}.form-link select{width:100%}.cota{display:none}}
+.form-texto{display:grid;gap:12px}
+.form-texto textarea{resize:vertical;min-height:88px;font:16px/1.5 system-ui,sans-serif}
+.linha-op{display:grid;grid-template-columns:auto auto 1fr;gap:12px}
+.linha-op select{width:auto}
+@media (max-width:640px){.linha-op{grid-template-columns:1fr 1fr}.linha-op .btn{grid-column:1/-1}}

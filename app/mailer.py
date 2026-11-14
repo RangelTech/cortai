@@ -46,8 +46,12 @@ def codigo(cfg: Config, para: str, cod: str) -> bool:
     return enviar(cfg, para, f"{cod} é o seu código do Cortaí", f"Seu código para entrar no Cortaí: {cod}\nVale por 15 minutos.", html)
 
 
-def pronto(cfg: Config, para: str, n: int, titulo: str) -> bool:
+def pronto(cfg: Config, para: str, n: int, titulo: str, tipo: str = "cortes") -> bool:
     link = cfg.base_url + "/painel"
+    if tipo == "animacao":
+        html = (f'<p style="font-size:16px">Sua animação <b>{titulo}</b> está pronta.</p>'
+                f'<p><a href="{link}" style="display:inline-block;background:#ff3d6e;color:#fff;text-decoration:none;font-weight:700;padding:12px 20px;border-radius:10px">Ver minha animação</a></p>')
+        return enviar(cfg, para, "Sua animação está pronta", f"Sua animação {titulo} está pronta: {link}", html)
     html = (f'<p style="font-size:16px">Seus <b>{n} cortes</b> de <b>{titulo}</b> estão prontos.</p>'
             f'<p><a href="{link}" style="display:inline-block;background:#ff3d6e;color:#fff;text-decoration:none;font-weight:700;padding:12px 20px;border-radius:10px">Ver meus cortes</a></p>')
     return enviar(cfg, para, "Seus cortes estão prontos", f"Seus {n} cortes de {titulo} estão prontos: {link}", html)

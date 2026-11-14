@@ -18,13 +18,21 @@
   <section class="novo">
     <div class="abas" role="tablist">
       <button class="aba on" role="tab" aria-selected="true" data-aba="link">Cortes de um link</button>
-      <button class="aba" role="tab" data-aba="texto">Animação por texto <i>em breve</i></button>
+      <button class="aba" role="tab" data-aba="texto">Animação por texto</button>
       <button class="aba" role="tab" data-aba="reels">Clonar Reels <i>em breve</i></button>
     </div>
     <form id="f-link" class="form-link">
       <input id="url" type="url" required placeholder="Cole aqui o link do vídeo (YouTube, Instagram, TikTok…)" autocomplete="off">
       <select id="quantos" aria-label="Quantos cortes"><option value="3">3 cortes</option><option value="1">1 corte</option><option value="2">2 cortes</option><option value="4">4 cortes</option><option value="5">5 cortes</option></select>
       <button class="btn btn-pri" type="submit">Gerar cortes</button>
+    </form>
+    <form id="f-texto" class="form-texto" hidden>
+      <textarea id="texto" rows="3" maxlength="1500" required placeholder="Ex.: curiosidade sobre por que o céu é azul, estilo canal dark, termina pedindo para seguir"></textarea>
+      <div class="linha-op">
+        <select id="segundos" aria-label="Duração"><option value="30">30 segundos</option><option value="15">15 segundos</option><option value="45">45 segundos</option><option value="60">60 segundos</option></select>
+        <select id="voz" aria-label="Voz do narrador"><option value="feminina">Voz feminina</option><option value="masculina">Voz masculina</option></select>
+        <button class="btn btn-pri" type="submit">Criar animação</button>
+      </div>
     </form>
     <div id="em-breve" class="em-breve" hidden>Estamos terminando esse modo. Assinantes recebem um e-mail quando ele chegar.</div>
     <div class="msg" id="msg" role="alert"></div>

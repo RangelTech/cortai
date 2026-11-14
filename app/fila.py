@@ -54,13 +54,16 @@ def _rodar(db: Banco, cfg: Config, t: dict) -> None:
             raise pipeline.ErroUsuario("Estamos com muitos pedidos agora. Tente de novo em alguns minutos.")
         if t["tipo"] == "cortes":
             res = pipeline.cortes_de_link(entrada["url"], pasta, cfg, avisar, int(entrada.get("quantos") or 3))
+        elif t["tipo"] == "animacao":
+            from app import animacao
+            res = animacao.animacao_de_texto(entrada["texto"], pasta, cfg, avisar, int(entrada.get("segundos") or 30), entrada.get("voz") or "feminina")
         else:
             raise pipeline.ErroUsuario("Esse tipo de pedido ainda não está disponível.")
         db.exec("UPDATE trabalhos SET estado='pronto', etapa='Pronto', progresso=1, resultado=?, fim=? WHERE id=?",
                 (json.dumps(res, ensure_ascii=False), agora(), tid))
         u = db.um("SELECT email FROM usuarios WHERE id=?", (t["usuario"],))
         if u and res.get("cortes"):
-            mailer.pronto(cfg, u["email"], len(res["cortes"]), res["video"]["titulo"][:80])
+            mailer.pronto(cfg, u["email"], len(res["cortes"]), res["video"]["titulo"][:80], t["tipo"])
     except pipeline.ErroUsuario as e:
         db.exec("UPDATE trabalhos SET estado='erro', etapa='Não deu certo', erro=?, fim=? WHERE id=?", (str(e), agora(), tid))
         pipeline.limpar_pasta(pasta)

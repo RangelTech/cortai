@@ -42,7 +42,7 @@
 
   function cartao(t) {
     const r = t.resultado
-    const titulo = r?.video?.titulo || t.entrada.url
+    const titulo = r?.video?.titulo || t.entrada.url || t.entrada.texto
     const rotulo = { fila: t.posicao ? `Na fila (${t.posicao} na frente)` : 'Na fila', rodando: 'Trabalhando', pronto: 'Pronto', erro: 'Não deu certo' }[t.estado]
     let corpo = ''
     if (t.estado === 'fila' || t.estado === 'rodando') {
@@ -93,9 +93,10 @@
     const a = e.target.closest('.aba')
     if (a) {
       document.querySelectorAll('.aba').forEach((x) => { x.classList.toggle('on', x === a); x.setAttribute('aria-selected', x === a) })
-      const link = a.dataset.aba === 'link'
-      $('#f-link').hidden = !link
-      $('#em-breve').hidden = link
+      const qual = a.dataset.aba
+      $('#f-link').hidden = qual !== 'link'
+      $('#f-texto').hidden = qual !== 'texto'
+      $('#em-breve').hidden = qual !== 'reels'
     }
   })
   $('#f-link').onsubmit = async (e) => {
@@ -111,6 +112,17 @@
       msg(err.message)
       if (err.status === 402) carregarConta()
     } finally { b.disabled = false }
+  }
+  $('#f-texto').onsubmit = async (e) => {
+    e.preventDefault()
+    const b = e.submitter; b.disabled = true; msg('')
+    try {
+      await api('/api/trabalhos', { method: 'POST', body: JSON.stringify({ tipo: 'animacao', texto: $('#texto').value.trim(), segundos: +$('#segundos').value, voz: $('#voz').value }) })
+      $('#texto').value = ''
+      msg('Pedido recebido! A animação fica pronta em poucos minutos.', 'ok')
+      await carregarConta()
+      listar()
+    } catch (err) { msg(err.message); if (err.status === 402) carregarConta() } finally { b.disabled = false }
   }
   $('#sair').onclick = async () => { await fetch('/api/sair', { method: 'POST' }); location.href = '/' }
   carregarConta().then(listar).catch(() => {})
