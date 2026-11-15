@@ -151,7 +151,7 @@
     e.preventDefault()
     const b = e.submitter; b.disabled = true; msg('')
     try {
-      await api('/api/trabalhos', { method: 'POST', body: JSON.stringify({ tipo: 'cortes', url: $('#url').value.trim(), quantos: +$('#quantos').value }) })
+      await api('/api/trabalhos', { method: 'POST', body: JSON.stringify({ tipo: 'cortes', url: $('#url').value.trim(), quantos: +$('#quantos').value, ...($('#tela').value ? { tela: { layout: $('#tela').value, audio_meu: $('#audio-meu').checked } } : {}) }) })
       $('#url').value = ''
       msg('Pedido recebido! Acompanhe abaixo.', 'ok')
       await carregarConta()
@@ -203,6 +203,34 @@
     x.onerror = () => { b.disabled = false; barra.hidden = true; msg('A conexão caiu durante o envio. Tente de novo.') }
     x.send(f)
   }
+  async function carregarReacao() {
+    try {
+      const j = await api('/api/reacao')
+      $('#reacao-atual').innerHTML = j.tem ? (j.tipo === 'foto' ? `Foto enviada.` : `Vídeo enviado (${String(j.segundos).replace('.', ',')} s).`) + ' Ele entra quando você escolher a tela dividida.' : 'Nenhum enviado ainda.'
+      $('#reacao-apagar').hidden = !j.tem
+      $('#ck-audio-meu').hidden = !(j.tem && j.tipo === 'video') || !$('#tela').value
+      window.__temReacao = j.tem
+    } catch {}
+  }
+  $('#tela').onchange = () => {
+    if ($('#tela').value && !window.__temReacao) { msg('Envie antes o seu vídeo ou foto de reação em Minha marca.'); abrirPerfil(false) }
+    carregarReacao()
+  }
+  $('#arq-reacao').onchange = () => {
+    const f = $('#arq-reacao').files[0]; if (!f) return
+    const x = new XMLHttpRequest(); x.open('POST', '/api/reacao'); x.setRequestHeader('x-arquivo', f.name)
+    $('#barra-reacao').hidden = false
+    x.upload.onprogress = (e) => { if (e.lengthComputable) $('#barra-reacao i').style.width = Math.round((e.loaded / e.total) * 100) + '%' }
+    x.onload = () => {
+      $('#barra-reacao').hidden = true
+      let j = {}; try { j = JSON.parse(x.responseText) } catch {}
+      if (x.status >= 400) { $('#mp-msg').textContent = typeof j.detail === 'string' ? j.detail : 'Não deu certo.'; $('#mp-msg').className = 'msg erro' } else { $('#mp-msg').textContent = 'Reação salva.'; $('#mp-msg').className = 'msg ok' }
+      carregarReacao()
+    }
+    x.send(f)
+  }
+  $('#reacao-apagar').onclick = async () => { await api('/api/reacao', { method: 'DELETE' }); carregarReacao() }
+  carregarReacao()
   $('#ver-perfil').onclick = () => abrirPerfil(false)
   $('#f-perfil').onsubmit = async (e) => {
     e.preventDefault(); const b = e.submitter; b.disabled = true; $('#mp-msg').textContent = ''

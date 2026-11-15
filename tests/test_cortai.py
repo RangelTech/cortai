@@ -423,3 +423,57 @@ def test_senha_bloqueia_depois_de_muitos_erros(cli):
         c.post("/api/entrar/senha", json={"email": "forca@exemplo.com", "senha": "x"})
     assert c.post("/api/entrar/senha", json={"email": "forca@exemplo.com", "senha": "x"}).status_code == 429
     senha_rotas._erros.clear()
+
+
+# ---------------------------------------------------------------- tela dividida (react)
+def _video(p, cor, seg=4, w=720, h=1280, audio=True):
+    import subprocess
+    cmd = ["ffmpeg", "-y", "-loglevel", "error", "-f", "lavfi", "-i", f"color=c={cor}:s={w}x{h}:d={seg}"]
+    if audio:
+        cmd += ["-f", "lavfi", "-i", f"sine=frequency=440:duration={seg}", "-shortest"]
+    cmd += ["-c:v", "libx264", "-preset", "ultrafast", "-pix_fmt", "yuv420p", str(p)]
+    subprocess.run(cmd, check=True)
+    return p
+
+
+def test_tela_dividida_video_foto_e_layouts(tmp_path):
+    import subprocess
+    from app import tela
+    reac = _video(tmp_path / "eu.mp4", "blue", seg=2, w=1280, h=720)
+    foto = tmp_path / "eu.jpg"
+    subprocess.run(["ffmpeg", "-y", "-loglevel", "error", "-f", "lavfi", "-i", "color=c=yellow:s=400x400", "-frames:v", "1", str(foto)], check=True)
+    for layout in ("cima", "baixo", "60_40"):
+        limpo = _video(tmp_path / f"c_{layout}.mp4", "red")
+        tela.aplicar(limpo, reac, layout, audio_meu=True, cor="#22aaff", n=2)
+        r = subprocess.run(["ffprobe", "-v", "error", "-select_streams", "v", "-show_entries", "stream=width,height", "-of", "csv=p=0", str(limpo)], capture_output=True, text=True)
+        assert r.stdout.strip() == "720,1280"
+        assert abs(tela.duracao(limpo) - 4) < 0.3  # vídeo de reação de 2 s repetiu até o fim do corte
+        # cor do pixel no meio de cada metade: conteúdo vermelho e pessoa azul, na ordem do layout
+        def px(y):
+            o = subprocess.run(["ffmpeg", "-loglevel", "error", "-ss", "1", "-i", str(limpo), "-vf", f"crop=2:2:360:{y}", "-frames:v", "1", "-f", "rawvideo", "-pix_fmt", "rgb24", "-"], capture_output=True).stdout
+            return tuple(o[:3])
+        topo, base = px(200), px(1100)
+        if layout == "baixo":
+            topo, base = base, topo
+        assert topo[0] > 150 and topo[2] < 100 and base[2] > 150 and base[0] < 100, (layout, topo, base)
+    limpo = _video(tmp_path / "c_foto.mp4", "red")
+    tela.aplicar(limpo, foto, "cima", cor="#22aaff")
+    assert abs(tela.duracao(limpo) - 4) < 0.3
+
+
+def test_reacao_rotas_e_pedido_com_tela(cli, tmp_path):
+    c, _ = cli
+    assinar(c); entrar(c)
+    assert c.get("/api/reacao").json() == {"tem": False}
+    assert c.post("/api/trabalhos", json={"url": "https://youtu.be/abc123", "tela": {"layout": "cima"}}).status_code == 422  # sem reação
+    assert c.post("/api/reacao", content=b"x" * 2000, headers={"x-arquivo": "eu.exe"}).status_code == 422
+    v = _video(tmp_path / "r.mp4", "green", seg=2)
+    assert c.post("/api/reacao", content=v.read_bytes(), headers={"x-arquivo": "eu.mp4"}).json()["tipo"] == "video"
+    assert c.get("/api/reacao").json()["tem"] is True
+    r = c.post("/api/trabalhos", json={"url": "https://youtu.be/abc123", "tela": {"layout": "60_40", "audio_meu": True}})
+    assert r.status_code == 200
+    import json as _j
+    t = c.app.state.db.um("SELECT entrada FROM trabalhos WHERE id=?", (r.json()["id"],))
+    tl = _j.loads(t["entrada"])["perfil"]["tela"]
+    assert tl["layout"] == "60_40" and tl["audio_meu"] is True and tl["arquivo"].endswith(".mp4")
+    assert c.delete("/api/reacao").json()["ok"] and c.get("/api/reacao").json()["tem"] is False

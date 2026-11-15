@@ -81,3 +81,6 @@ input.cor{height:46px;padding:4px;cursor:pointer}
 
 /* o display:grid dos formularios vencia o atributo hidden e as tres abas apareciam juntas */
 [hidden]{display:none!important}
+
+.linha-tela{grid-column:1/-1;display:flex;gap:12px;align-items:center;flex-wrap:wrap;margin-top:4px}.linha-tela select{max-width:380px}
+.reacao-box{margin-top:20px;padding-top:16px;border-top:1px solid var(--bd)}

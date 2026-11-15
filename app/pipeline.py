@@ -420,6 +420,10 @@ def renderizar(origem: str, corte: dict, palavras: list[dict], pasta: Path, n: i
     r = subprocess.run(cmd, capture_output=True, text=True)
     if r.returncode != 0:
         raise RuntimeError("ffmpeg: " + r.stderr[-400:])
+    tl = (perfil or {}).get("tela")
+    if tl and Path(tl.get("arquivo") or "").exists():  # tela dividida (react): antes das legendas
+        from app import tela
+        tela.aplicar(out, Path(tl["arquivo"]), tl.get("layout") or "cima", bool(tl.get("audio_meu")), (perfil or {}).get("cor") or "#111111", n)
     rel = [{"start": round(w_["start"] - ini, 2), "end": round(w_["end"] - ini, 2), "word": w_["word"]} for w_ in palavras
            if w_["end"] > ini and w_["start"] < fim and str(w_["word"]).strip()]
     arquivos = estilo.versoes(out, rel, corte.get("gancho", ""), pasta, f"corte{n}", perfil or {})

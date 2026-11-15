@@ -178,8 +178,83 @@ def criar_app(cfg: Config | None = None, iniciar_fila: bool = True) -> FastAPI:
             entrada = {"url": url, "quantos": max(1, min(cfg.max_cortes, int(b.get("quantos") or 3)))}
         pf = perfil_de(u)
         entrada["perfil"] = {"arroba": pf["arroba"] or pf["arroba_tiktok"], "redes": pf["redes"], "cor": pf["cor"]}
+        tl = b.get("tela") if isinstance(b.get("tela"), dict) else None
+        if tl and tipo == "cortes":
+            from app import tela
+            arq = reacao_de(u)
+            if not arq:
+                raise HTTPException(422, "para a tela dividida, suba antes o seu vídeo ou foto de reação em Minha marca")
+            entrada["perfil"]["tela"] = {"arquivo": str(arq), "layout": tl.get("layout") if tl.get("layout") in tela.LAYOUTS else "cima",
+                                         "audio_meu": bool(tl.get("audio_meu"))}
         tid = fila.criar(db, u["id"], tipo, entrada)
         return publico(db.um("SELECT * FROM trabalhos WHERE id=?", (tid,)))
+
+    def reacao_de(u: dict):
+        d = Path(cfg.dados) / "reacao"
+        for f in d.glob(f"{u['id']}.*") if d.exists() else []:
+            return f
+        return None
+
+    @app.get("/api/reacao")
+    def reacao_info(request: Request):
+        u = usuario(request)
+        f = reacao_de(u)
+        if not f:
+            return {"tem": False}
+        from app import tela
+        return {"tem": True, "tipo": "foto" if tela.eh_foto(f) else "video", "url": "/api/reacao/arquivo", "segundos": round(tela.duracao(f), 1) if not tela.eh_foto(f) else None}
+
+    @app.get("/api/reacao/arquivo")
+    def reacao_arquivo(request: Request):
+        f = reacao_de(usuario(request))
+        if not f:
+            raise HTTPException(404, "sem reação")
+        return FileResponse(f)
+
+    @app.delete("/api/reacao")
+    def reacao_apagar(request: Request):
+        f = reacao_de(usuario(request))
+        if f:
+            f.unlink(missing_ok=True)
+        return {"ok": True}
+
+    @app.post("/api/reacao")
+    async def reacao_subir(request: Request):
+        """Vídeo (até 2 min, 200 MB) ou foto do cliente para a tela dividida. Corpo cru, nome no cabeçalho x-arquivo."""
+        from app import tela
+        u = usuario(request)
+        nome = request.headers.get("x-arquivo") or "reacao.mp4"
+        ext = ("." + nome.rsplit(".", 1)[-1].lower()) if "." in nome else ".mp4"
+        if ext not in tela.EXT_VIDEO + tela.EXT_FOTO:
+            raise HTTPException(422, "mande um vídeo (MP4, MOV, WEBM) ou uma foto (JPG, PNG)")
+        d = Path(cfg.dados) / "reacao"
+        d.mkdir(parents=True, exist_ok=True)
+        tmp = d / f"{u['id']}.novo{ext}"
+        total = 0
+        with open(tmp, "wb") as f:
+            async for parte in request.stream():
+                total += len(parte)
+                if total > 200 * 1024 * 1024:
+                    f.close(); tmp.unlink(missing_ok=True)
+                    raise HTTPException(413, "o arquivo passa de 200 MB")
+                f.write(parte)
+        if total < 1000:
+            tmp.unlink(missing_ok=True)
+            raise HTTPException(422, "o arquivo chegou vazio; tente de novo")
+        if ext in tela.EXT_VIDEO:
+            dur = tela.duracao(tmp)
+            if dur <= 0:
+                tmp.unlink(missing_ok=True)
+                raise HTTPException(422, "não consegui ler esse vídeo; exporte em MP4")
+            if dur > tela.MAX_REACAO_S:
+                tmp.unlink(missing_ok=True)
+                raise HTTPException(422, "o vídeo de reação pode ter até 2 minutos")
+        for velho in d.glob(f"{u['id']}.*"):
+            if velho != tmp:
+                velho.unlink(missing_ok=True)
+        final = d / f"{u['id']}{ext}"
+        tmp.replace(final)
+        return {"ok": True, "tipo": "foto" if tela.eh_foto(final) else "video"}
 
     @app.post("/api/falado")
     async def novo_falado(request: Request):

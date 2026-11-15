@@ -80,17 +80,11 @@ def narrar(texto: str, voz: str, destino: Path) -> list[dict]:
 
 
 def imagem(prompt: str, estilo: str, destino: Path, cfg: Config) -> None:
-    corpo = {"prompt": f"{prompt}. Style: {estilo}. Vertical 9:16 composition, no text, no watermark.", "size": "1024x1536"}
-    ultimo = None
-    for _ in range(2):
-        try:
-            r = httpx.post(cfg.llm_base + "/images/generations", headers={"Authorization": f"Bearer {cfg.llm_key}"}, json=corpo, timeout=240)
-            r.raise_for_status()
-            destino.write_bytes(base64.b64decode(r.json()["data"][0]["b64_json"]))
-            return
-        except Exception as e:  # noqa: BLE001
-            ultimo = e
-    raise RuntimeError(f"imagem: {ultimo}")
+    from app import rt_midia  # regra 5.0: GPT; recusa ou nsfw vai ao Runware
+    r = rt_midia.imagem(f"{prompt}. Style: {estilo}. Vertical 9:16 composition, no text, no watermark.", cfg.llm_base, cfg.llm_key, "1024x1536")
+    if r.rota != "gpt":
+        log.info("imagem pelo %s (%s)", r.rota, r.motivo)
+    destino.write_bytes(r.dados)
 
 
 def conferir_imagem(png: Path, fala: str, cfg: Config) -> dict | None:

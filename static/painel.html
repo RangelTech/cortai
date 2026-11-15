@@ -18,7 +18,7 @@
   <section class="novo">
     <div class="abas" role="tablist">
       <button class="aba on" role="tab" aria-selected="true" data-aba="link">Cortes de um link</button>
-      <button class="aba" role="tab" data-aba="texto">Animação por texto</button>
+      <a class="aba" href="https://anima-ai.rangeltech.net/?entrar=1" target="_blank" rel="noopener" title="As animações agora têm um produto só delas">Animações: Anima AI ↗</a>
       <button class="aba" role="tab" data-aba="reels">Clonar Reels</button>
       <button class="aba" role="tab" data-aba="falado">Meu vídeo falado</button>
     </div>
@@ -26,6 +26,10 @@
       <input id="url" type="url" required placeholder="Cole o link do vídeo ou da live (YouTube, Instagram, TikTok… até 6 horas)" autocomplete="off">
       <select id="quantos" aria-label="Quantos cortes"><option value="3">3 cortes</option><option value="1">1 corte</option><option value="2">2 cortes</option><option value="4">4 cortes</option><option value="5">5 cortes</option></select>
       <button class="btn btn-pri" type="submit">Gerar cortes</button>
+      <div class="linha-tela">
+        <select id="tela" aria-label="Tela dividida"><option value="">Sem tela dividida</option><option value="cima">Tela dividida: corte em cima, você embaixo</option><option value="baixo">Tela dividida: você em cima, corte embaixo</option><option value="60_40">Tela dividida 60/40 (corte maior)</option></select>
+        <label class="ck" id="ck-audio-meu" hidden><input type="checkbox" id="audio-meu"> misturar o áudio do meu vídeo</label>
+      </div>
     </form>
     <form id="f-texto" class="form-texto" hidden>
       <textarea id="texto" rows="3" maxlength="1500" required placeholder="Ex.: curiosidade sobre por que o céu é azul, estilo canal dark, termina pedindo para seguir"></textarea>
@@ -82,6 +86,14 @@
       <button class="btn btn-pri" style="width:100%;margin-top:16px" type="submit">Salvar e continuar</button>
     </form>
     <div class="msg" id="mp-msg" role="alert"></div>
+    <div class="reacao-box">
+      <label>Tela dividida (react): seu vídeo ou foto</label>
+      <p class="sub-sec" style="margin:4px 0 8px">Um vídeo seu de até 2 minutos reagindo, ou uma foto. Aparece em cima ou embaixo dos cortes quando você marcar "Tela dividida".</p>
+      <div id="reacao-atual" class="sub-sec">Nenhum enviado ainda.</div>
+      <label class="btn btn-sec" style="width:100%;margin-top:8px" for="arq-reacao">Enviar vídeo ou foto<input id="arq-reacao" type="file" accept="video/mp4,video/quicktime,video/webm,image/jpeg,image/png,.mp4,.mov,.webm,.jpg,.jpeg,.png" hidden></label>
+      <button class="link-demo" id="reacao-apagar" type="button" hidden>Remover</button>
+      <div class="barra-up" id="barra-reacao" hidden><i></i></div>
+    </div>
   </div>
 </div>
 <div class="modal" id="m-editar" hidden role="dialog" aria-modal="true" aria-labelledby="me-tit">
@@ -103,7 +115,7 @@
 <script src="/s/login.js"></script>
 <script>window.TOUR = { chave: 'cortai.tour2', atraso: 1800, passos: [
   { titulo: 'Bem-vindo ao Cortaí', texto: 'Em 1 minuto eu te mostro como transformar vídeos em cortes virais prontos para postar.' },
-  { alvo: '.abas', titulo: 'Quatro jeitos de criar', texto: 'Cortes de um link (YouTube, Instagram, TikTok), animação a partir de um texto em 10 estilos, clonar o formato de um Reels que bombou, ou subir o seu próprio vídeo falado para tirarmos as pausas e pormos legenda.' },
+  { alvo: '.abas', titulo: 'Três jeitos de criar', texto: 'Cortes de um link (YouTube, Instagram, TikTok), clonar o formato de um Reels que bombou, ou subir o seu próprio vídeo falado para tirarmos as pausas e pormos legenda. Animações a partir de texto agora ficam no Anima AI, nosso produto irmão.' },
   { alvo: '#url', titulo: 'Cole o link aqui', texto: 'Qualquer vídeo público com alguém falando. O Cortaí assiste, transcreve e acha os momentos que prendem.' },
   { alvo: '#quantos', titulo: 'Quantos cortes', texto: 'Escolha de 1 a 5 cortes por vídeo. Cada um sai vertical, com legenda, gancho no topo e áudio ajustado.' },
   { alvo: '#ver-perfil', titulo: 'Sua marca', texto: 'Seu @ do Instagram e do TikTok, as redes onde você posta e a cor da marca. Cada corte sai com uma versão para cada rede, no layout certo de cada uma.' },
