@@ -154,3 +154,14 @@ def test_legenda_ass_grupos_e_gancho():
 def test_json_da_resposta_com_pensamento():
     j = pipeline._json_da_resposta('<think>hmm</think>Aqui: {"resumo":"x","cortes":[]} fim')
     assert j == {"resumo": "x", "cortes": []}
+
+
+def test_admin_exige_chave_e_resume(cli):
+    c = cli[0]
+    app = c.app
+    app.state.cfg.admin_key = "adm"
+    assert c.get("/api/admin/resumo").status_code == 401
+    assert c.get("/api/admin/resumo", headers={"x-admin-key": "errada"}).status_code == 401
+    r = c.get("/api/admin/resumo", headers={"x-admin-key": "adm"})
+    assert r.status_code == 200 and "assinantes" in r.json() and len(r.json()["planos"]) == 3
+    assert c.get("/api/admin/assinantes", headers={"x-admin-key": "adm"}).status_code == 200

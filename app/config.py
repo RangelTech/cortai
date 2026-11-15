@@ -32,6 +32,7 @@ class Config:
     checkouts: dict = field(default_factory=dict)          # {"start": url, "pro": url, "turbo": url}
     planos_por_produto: dict = field(default_factory=dict)  # {"<id do produto Cakto>": plano}
     lancamento_ate: str = "2026-11-30"
+    admin_key: str = ""
 
 
 def carregar() -> Config:
@@ -61,4 +62,5 @@ def carregar() -> Config:
         checkouts=json.loads(e("CORTAI_CHECKOUTS", "") or "{}"),
         planos_por_produto=json.loads(e("CORTAI_PLANOS_CAKTO", "") or "{}"),
         lancamento_ate=e("CORTAI_LANCAMENTO_ATE", "2026-11-30"),
+        admin_key=e("CORTAI_ADMIN_KEY", ""),
     )

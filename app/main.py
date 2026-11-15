@@ -208,6 +208,39 @@ def criar_app(cfg: Config | None = None, iniciar_fila: bool = True) -> FastAPI:
             return {"ok": True, "revogado": email}
         return {"ok": True, "ignorado": evento}
 
+
+    # ------------------------------------------------ admin (painel do ecossistema no llm-access)
+    def exigir_admin(request: Request):
+        chave = request.headers.get("x-admin-key") or ""
+        if not cfg.admin_key or not hmac.compare_digest(chave, cfg.admin_key):
+            raise HTTPException(401, "chave de admin")
+
+    @app.get("/api/admin/resumo")
+    def admin_resumo(request: Request):
+        exigir_admin(request)
+        ativos = db.todos("SELECT plano, COUNT(*) n FROM usuarios WHERE ativo_ate>? GROUP BY plano", (agora(),))
+        receita = sum(r["n"] * (PLANOS.get(r["plano"]) or PLANOS["pro"])["preco"] for r in ativos)
+        mes = agora() - 30 * 86400
+        return {"produto": "cortai", "nome": "Cortaí", "url": cfg.base_url,
+                "assinantes": sum(r["n"] for r in ativos), "por_plano": {r["plano"]: r["n"] for r in ativos},
+                "receita_mensal": round(receita, 2), "cadastros": db.um("SELECT COUNT(*) n FROM usuarios")["n"],
+                "pedidos_30d": db.um("SELECT COUNT(*) n FROM trabalhos WHERE criado>?", (mes,))["n"],
+                "erros_30d": db.um("SELECT COUNT(*) n FROM trabalhos WHERE criado>? AND estado='erro'", (mes,))["n"],
+                "na_fila": db.um("SELECT COUNT(*) n FROM trabalhos WHERE estado IN ('fila','rodando')")["n"],
+                "planos": planos_publicos()}
+
+    @app.get("/api/admin/assinantes")
+    def admin_assinantes(request: Request):
+        exigir_admin(request)
+        mes = agora() - 30 * 86400
+        linhas = db.todos("""SELECT u.id, u.email, u.criado, u.plano, u.ativo_ate, u.pedido,
+                                    (SELECT COUNT(*) FROM trabalhos t WHERE t.usuario=u.id AND t.criado>?) pedidos_30d,
+                                    (SELECT MAX(criado) FROM trabalhos t WHERE t.usuario=u.id) ultimo
+                             FROM usuarios u ORDER BY u.ativo_ate DESC, u.criado DESC LIMIT 1000""", (mes,))
+        for l in linhas:
+            l["ativo"] = l["ativo_ate"] > agora()
+        return {"assinantes": linhas}
+
     # ------------------------------------------------ páginas
     @app.get("/", response_class=HTMLResponse)
     def inicio():
