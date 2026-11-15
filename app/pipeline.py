@@ -36,7 +36,7 @@ def baixar(url: str, pasta: Path, cfg: Config) -> dict:
 
     opcoes = {
         "outtmpl": str(pasta / "origem.%(ext)s"),
-        "format": "bv*[height<=720][ext=mp4]+ba[ext=m4a]/bv*[height<=720]+ba/b[height<=720]/b",
+        "format": "bv*[vcodec^=avc1][height<=720]+ba[ext=m4a]/bv*[height<=720][ext=mp4]+ba[ext=m4a]/bv*[height<=720]+ba/b[height<=720]/b",
         "merge_output_format": "mp4",
         "noplaylist": True,
         "quiet": True,
@@ -65,7 +65,7 @@ def baixar(url: str, pasta: Path, cfg: Config) -> dict:
     if info.get("is_live"):
         raise ErroUsuario("Transmissão ao vivo ainda não funciona. Mande o link depois que a live terminar.")
     if dur > 90 * 60:  # live longa: 480p basta para o corte vertical e o download cabe no disco
-        opcoes["format"] = "bv*[height<=480][ext=mp4]+ba[ext=m4a]/bv*[height<=480]+ba/b[height<=480]/b"
+        opcoes["format"] = "bv*[vcodec^=avc1][height<=480]+ba[ext=m4a]/bv*[height<=480][ext=mp4]+ba[ext=m4a]/bv*[height<=480]+ba/b[height<=480]/b"
     with yt_dlp.YoutubeDL(opcoes) as y:
         y.download([url])
     arq = next((p for p in pasta.glob("origem.*") if p.suffix in (".mp4", ".mkv", ".webm", ".mov")), None)
