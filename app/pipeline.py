@@ -399,14 +399,16 @@ def _filtro_ass(caminho: Path) -> str:
     return f"subtitles='{p}':fontsdir='{f}'"
 
 
-def renderizar(origem: str, corte: dict, palavras: list[dict], pasta: Path, n: int, perfil: dict | None = None) -> dict:
+def renderizar(origem: str, corte: dict, palavras: list[dict], pasta: Path, n: int, perfil: dict | None = None, trocas: list[float] | None = None) -> dict:
     """Corte limpo (vídeo 9:16 + áudio, sem texto, guardado para editar) e uma versão por rede com legenda, gancho e @ (estilo.py)."""
     from app import estilo
     ini, fim = corte["inicio"], corte["fim"]
     w, h = tamanho_video(origem)
     if h and w and h >= w:  # já é vertical: só ajusta ao quadro 9:16
         base = f"[0:v]scale={W}:{H}:force_original_aspect_ratio=increase,crop={W}:{H},setsar=1[v0]"
-    else:  # horizontal: fundo desfocado + vídeo no meio, um pouco ampliado
+    elif h and w and (pos := _seguir_rosto(origem, ini, fim, trocas, w, h)):  # horizontal com rosto: recorte 9:16 seguindo a pessoa
+        base = pos
+    else:  # horizontal sem rosto claro: fundo desfocado + vídeo no meio, um pouco ampliado
         base = (f"[0:v]split[a][b];[a]scale={W}:{H}:force_original_aspect_ratio=increase,crop={W}:{H},boxblur=20:2,eq=brightness=-0.12[fundo];"
                 f"[b]crop='min(iw,ih*3/4)':ih,scale={W}:{int(W * 4 / 3)}[frente];[fundo][frente]overlay=(W-w)/2:(H-h)/2-70,setsar=1[v0]")
     filtro = base.replace("[v0]", "[v]")
@@ -426,6 +428,21 @@ def renderizar(origem: str, corte: dict, palavras: list[dict], pasta: Path, n: i
     subprocess.run(["ffmpeg", "-y", "-loglevel", "error", "-ss", "1.0", "-i", str(principal), "-frames:v", "1", "-q:v", "4", str(capa)], check=False)
     return {**corte, "arquivo": principal.name, "arquivos": arquivos, "limpo": out.name, "palavras": rel, "legenda_on": True,
             "capa": capa.name if capa.exists() else None, "duracao": round(fim - ini, 1)}
+
+
+def _seguir_rosto(origem: str, ini: float, fim: float, trocas: list[float] | None, w: int, h: int) -> str | None:
+    from app import enquadrar
+    cw = int(h * 9 / 16) // 2 * 2
+    if cw >= w:
+        return None
+    try:
+        pos = enquadrar.posicoes(origem, ini, fim, trocas or [], cw / w)
+    except Exception as e:  # noqa: BLE001
+        log.warning("enquadramento por rosto falhou: %s", e)
+        return None
+    if not pos:
+        return None
+    return f"[0:v]crop={cw}:{h}:'{enquadrar.expressao_x(pos, w, cw)}':0,scale={W}:{H},setsar=1[v0]"
 
 
 # ---------------------------------------------------------------- tudo junto
@@ -454,7 +471,7 @@ def cortes_de_link(url: str, pasta: Path, cfg: Config, avisar: Callable[[str, fl
             for k, c in enumerate(escolha["cortes"], 1):
                 base = 0.5 + 0.45 * (k - 1) / max(1, total)
                 avisar(f"Editando o corte {k} de {total}", base)
-                feito = renderizar(info["arquivo"], c, palavras, pasta, k, perfil)
+                feito = renderizar(info["arquivo"], c, palavras, pasta, k, perfil, trocas)
                 if cfg.validar:
                     avisar(f"Conferindo o corte {k} de {total}", base + 0.15 / max(1, total))
                     v = diretor.validar(pasta / feito["arquivo"], c, diretor.fala_do_trecho(segs, c["inicio"], c["fim"]), cfg, cliente)
@@ -467,7 +484,7 @@ def cortes_de_link(url: str, pasta: Path, cfg: Config, avisar: Callable[[str, fl
                         if v["gancho_novo"]:
                             novo["gancho"] = v["gancho_novo"]
                         avisar(f"Refazendo o corte {k} de {total}", base + 0.25 / max(1, total))
-                        feito = renderizar(info["arquivo"], novo, palavras, pasta, k, perfil)
+                        feito = renderizar(info["arquivo"], novo, palavras, pasta, k, perfil, trocas)
                         v2 = diretor.validar(pasta / feito["arquivo"], novo, diretor.fala_do_trecho(segs, novo["inicio"], novo["fim"]), cfg, cliente)
                         v = v2 or v
                         v["refeito"] = True

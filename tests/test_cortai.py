@@ -356,3 +356,18 @@ def test_cortesia_admin(tmp_path):
     assert c.get("/api/conta").json()["assinante"] is True
     c.post("/api/admin/cortesia", json={"email": "z@x.com", "dias": 0}, headers={"x-admin-key": "adm"})
     assert c.get("/api/conta").json()["assinante"] is False
+
+
+def test_expressao_do_recorte_por_cena():
+    from app import enquadrar
+    e = enquadrar.expressao_x([(0, 0.3), (4.5, 0.7), (9.0, 0.5)], 1280, 404)
+    assert e == "if(lt(t,4.50),182,if(lt(t,9.00),694,438))"
+    assert enquadrar.expressao_x([(0, 0.99)], 1280, 404) == "876"     # nunca passa da borda
+
+
+def test_sem_rosto_usa_layout_antigo(tmp_path):
+    import subprocess
+    from app import enquadrar
+    o = tmp_path / "o.mp4"
+    subprocess.run(["ffmpeg", "-y", "-loglevel", "error", "-f", "lavfi", "-i", "color=c=gray:s=1280x720:d=6", "-c:v", "libx264", "-preset", "ultrafast", str(o)], check=True)
+    assert enquadrar.posicoes(str(o), 0, 6, [], 0.3) is None
