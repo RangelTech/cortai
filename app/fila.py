@@ -60,13 +60,15 @@ def _rodar(db: Banco, cfg: Config, t: dict) -> None:
         if pipeline.disco_livre(cfg.dados) < 3 * 1024**3:
             raise pipeline.ErroUsuario("Estamos com muitos pedidos agora. Tente de novo em alguns minutos.")
         if t["tipo"] == "cortes":
-            res = pipeline.cortes_de_link(entrada["url"], pasta, cfg, avisar, int(entrada.get("quantos") or 3))
+            res = pipeline.cortes_de_link(entrada["url"], pasta, cfg, avisar, int(entrada.get("quantos") or 3), entrada.get("perfil"))
         elif t["tipo"] == "clonar":
             from app import clonar
             res = clonar.clonar_reels(entrada["url"], entrada["texto"], pasta, cfg, avisar, entrada.get("voz") or "feminina")
+            _marcar(res, pasta, entrada.get("perfil"))
         elif t["tipo"] == "animacao":
             from app import animacao
             res = animacao.animacao_de_texto(entrada["texto"], pasta, cfg, avisar, int(entrada.get("segundos") or 30), entrada.get("voz") or "feminina")
+            _marcar(res, pasta, entrada.get("perfil"))
         else:
             raise pipeline.ErroUsuario("Esse tipo de pedido ainda não está disponível.")
         db.exec("UPDATE trabalhos SET estado='pronto', etapa='Pronto', progresso=1, resultado=?, fim=? WHERE id=?",
@@ -83,6 +85,19 @@ def _rodar(db: Banco, cfg: Config, t: dict) -> None:
                 ("Algo deu errado do nosso lado. Esse pedido não conta no seu limite; tente de novo.", agora(), tid))
         db.exec("UPDATE trabalhos SET entrada=json_set(entrada,'$.falha_tecnica',?) WHERE id=?", (str(e)[:500], tid))
         pipeline.limpar_pasta(pasta)
+
+
+def _marcar(res: dict, pasta: Path, perfil: dict | None) -> None:
+    """Animação e clone: uma versão por rede com o @ do cliente (o texto já vem queimado no vídeo)."""
+    if not perfil:
+        return
+    from app import estilo
+    for k, c in enumerate(res.get("cortes", []), 1):
+        try:
+            c["arquivos"] = estilo.marca_simples(pasta / c["arquivo"], pasta, f"corte{k}", perfil)
+            c["arquivo"] = next(iter(c["arquivos"].values()))
+        except Exception:  # noqa: BLE001  sem o @ o vídeo continua valendo
+            log.exception("marca falhou")
 
 
 def _laco(db: Banco, cfg: Config, parar: threading.Event) -> None:

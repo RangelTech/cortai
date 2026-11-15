@@ -293,18 +293,18 @@ def _filtro_ass(caminho: Path) -> str:
     return f"subtitles='{p}':fontsdir='{f}'"
 
 
-def renderizar(origem: str, corte: dict, palavras: list[dict], pasta: Path, n: int) -> dict:
+def renderizar(origem: str, corte: dict, palavras: list[dict], pasta: Path, n: int, perfil: dict | None = None) -> dict:
+    """Corte limpo (vídeo 9:16 + áudio, sem texto, guardado para editar) e uma versão por rede com legenda, gancho e @ (estilo.py)."""
+    from app import estilo
     ini, fim = corte["inicio"], corte["fim"]
-    ass = pasta / f"corte{n}.ass"
-    ass.write_text(legenda_ass(palavras, ini, fim, corte.get("gancho", "")), encoding="utf-8")
     w, h = tamanho_video(origem)
     if h and w and h >= w:  # já é vertical: só ajusta ao quadro 9:16
         base = f"[0:v]scale={W}:{H}:force_original_aspect_ratio=increase,crop={W}:{H},setsar=1[v0]"
     else:  # horizontal: fundo desfocado + vídeo no meio, um pouco ampliado
         base = (f"[0:v]split[a][b];[a]scale={W}:{H}:force_original_aspect_ratio=increase,crop={W}:{H},boxblur=20:2,eq=brightness=-0.12[fundo];"
                 f"[b]crop='min(iw,ih*3/4)':ih,scale={W}:{int(W * 4 / 3)}[frente];[fundo][frente]overlay=(W-w)/2:(H-h)/2-70,setsar=1[v0]")
-    filtro = f"{base};[v0]{_filtro_ass(ass)}[v]"
-    out = pasta / f"corte{n}.mp4"
+    filtro = base.replace("[v0]", "[v]")
+    out = pasta / f"corte{n}_limpo.mp4"
     cmd = ["ffmpeg", "-y", "-loglevel", "error", "-ss", f"{ini:.2f}", "-to", f"{fim:.2f}", "-i", origem,
            "-filter_complex", filtro, "-map", "[v]", "-map", "0:a?", "-c:v", "libx264", "-preset", "veryfast", "-crf", "23",
            "-pix_fmt", "yuv420p", "-c:a", "aac", "-b:a", "128k", "-af", "loudnorm=I=-14:TP=-1.5:LRA=11", "-movflags", "+faststart",
@@ -312,14 +312,18 @@ def renderizar(origem: str, corte: dict, palavras: list[dict], pasta: Path, n: i
     r = subprocess.run(cmd, capture_output=True, text=True)
     if r.returncode != 0:
         raise RuntimeError("ffmpeg: " + r.stderr[-400:])
+    rel = [{"start": round(w_["start"] - ini, 2), "end": round(w_["end"] - ini, 2), "word": w_["word"]} for w_ in palavras
+           if w_["end"] > ini and w_["start"] < fim and str(w_["word"]).strip()]
+    arquivos = estilo.versoes(out, rel, corte.get("gancho", ""), pasta, f"corte{n}", perfil or {})
+    principal = pasta / next(iter(arquivos.values()))
     capa = pasta / f"corte{n}.jpg"
-    subprocess.run(["ffmpeg", "-y", "-loglevel", "error", "-ss", "1.0", "-i", str(out), "-frames:v", "1", "-q:v", "4", str(capa)], check=False)
-    ass.unlink(missing_ok=True)
-    return {**corte, "arquivo": out.name, "capa": capa.name if capa.exists() else None, "duracao": round(fim - ini, 1)}
+    subprocess.run(["ffmpeg", "-y", "-loglevel", "error", "-ss", "1.0", "-i", str(principal), "-frames:v", "1", "-q:v", "4", str(capa)], check=False)
+    return {**corte, "arquivo": principal.name, "arquivos": arquivos, "limpo": out.name, "palavras": rel, "legenda_on": True,
+            "capa": capa.name if capa.exists() else None, "duracao": round(fim - ini, 1)}
 
 
 # ---------------------------------------------------------------- tudo junto
-def cortes_de_link(url: str, pasta: Path, cfg: Config, avisar: Callable[[str, float], None], quantos: int = 3) -> dict:
+def cortes_de_link(url: str, pasta: Path, cfg: Config, avisar: Callable[[str, float], None], quantos: int = 3, perfil: dict | None = None) -> dict:
     pasta.mkdir(parents=True, exist_ok=True)
     with httpx.Client() as cliente:
         avisar("Baixando o vídeo", 0.05)
@@ -343,7 +347,7 @@ def cortes_de_link(url: str, pasta: Path, cfg: Config, avisar: Callable[[str, fl
             for k, c in enumerate(escolha["cortes"], 1):
                 base = 0.5 + 0.45 * (k - 1) / max(1, total)
                 avisar(f"Editando o corte {k} de {total}", base)
-                feito = renderizar(info["arquivo"], c, palavras, pasta, k)
+                feito = renderizar(info["arquivo"], c, palavras, pasta, k, perfil)
                 if cfg.validar:
                     avisar(f"Conferindo o corte {k} de {total}", base + 0.15 / max(1, total))
                     v = diretor.validar(pasta / feito["arquivo"], c, diretor.fala_do_trecho(segs, c["inicio"], c["fim"]), cfg, cliente)
@@ -356,7 +360,7 @@ def cortes_de_link(url: str, pasta: Path, cfg: Config, avisar: Callable[[str, fl
                         if v["gancho_novo"]:
                             novo["gancho"] = v["gancho_novo"]
                         avisar(f"Refazendo o corte {k} de {total}", base + 0.25 / max(1, total))
-                        feito = renderizar(info["arquivo"], novo, palavras, pasta, k)
+                        feito = renderizar(info["arquivo"], novo, palavras, pasta, k, perfil)
                         v2 = diretor.validar(pasta / feito["arquivo"], novo, diretor.fala_do_trecho(segs, novo["inicio"], novo["fim"]), cfg, cliente)
                         v = v2 or v
                         v["refeito"] = True

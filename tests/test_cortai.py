@@ -25,11 +25,13 @@ def assinar(c, email="ana@exemplo.com", produto="prod-start"):
     assert r.status_code == 200
 
 
-def entrar(c, email="ana@exemplo.com"):
+def entrar(c, email="ana@exemplo.com", perfil=True):
     r = c.post("/api/entrar/codigo", json={"email": email})
     assert r.status_code == 200
     r = c.post("/api/entrar", json={"email": email, "codigo": r.json()["codigo_dev"]})
     assert r.status_code == 200
+    if perfil:
+        assert c.post("/api/perfil", json={"arroba": "minhaloja", "redes": ["instagram", "tiktok"], "cor": "#22aaff"}).status_code == 200
     return r
 
 
@@ -190,3 +192,49 @@ def test_senha_so_para_demo(cli):
     assert c.post("/api/entrar/senha", json={"email": "Demo@RangelTech.net", "senha": "Demo2026"}).status_code == 200
     cfg.demo_senha = ""
     assert c.post("/api/entrar/senha", json={"email": "demo@rangeltech.net", "senha": ""}).status_code == 400
+
+
+def test_perfil_obrigatorio_antes_do_pedido(cli):
+    c, _ = cli
+    entrar(c, perfil=False)
+    assinar(c)
+    r = c.post("/api/trabalhos", json={"url": "https://youtu.be/abc123"})
+    assert r.status_code == 428
+    assert c.post("/api/perfil", json={"arroba": "", "redes": ["tiktok"]}).status_code == 422
+    assert c.post("/api/perfil", json={"arroba": "@minha.loja!", "redes": []}).status_code == 422
+    p = c.post("/api/perfil", json={"arroba": "@minha.loja!", "redes": ["tiktok", "orkut"], "cor": "azul"}).json()
+    assert p == {"arroba": "minha.loja", "arroba_tiktok": "", "redes": ["tiktok"], "cor": "#ff3d6e"}
+    r = c.post("/api/trabalhos", json={"url": "https://youtu.be/abc123"})
+    assert r.status_code == 200
+
+
+def test_versoes_por_rede_e_edicao(cli, tmp_path):
+    """Corte limpo de 12 s (vídeo de teste) -> versões TikTok e Instagram com @ e legenda; edição apara e troca o gancho."""
+    import json
+    import subprocess
+    from app import estilo, fila
+    c, app = cli
+    entrar(c)
+    assinar(c)
+    db = app.state.db
+    u = db.um("SELECT id FROM usuarios WHERE email='ana@exemplo.com'")["id"]
+    tid = fila.criar(db, u, "cortes", {"url": "https://x"})
+    pasta = fila.pasta_trabalho(app.state.cfg, tid)
+    pasta.mkdir(parents=True)
+    limpo = pasta / "corte1_limpo.mp4"
+    subprocess.run(["ffmpeg", "-y", "-loglevel", "error", "-f", "lavfi", "-i", "color=c=gray:s=720x1280:d=12", "-f", "lavfi", "-i", "sine=f=440:d=12",
+                    "-shortest", "-c:v", "libx264", "-preset", "ultrafast", "-c:a", "aac", str(limpo)], check=True)
+    palavras = [{"start": 1.0 + i * 0.5, "end": 1.4 + i * 0.5, "word": f"palavra{i}"} for i in range(12)]
+    arquivos = estilo.versoes(limpo, palavras, "gancho de teste", pasta, "corte1", {"redes": ["tiktok", "instagram"], "arroba": "minhaloja", "cor": "#22aaff"})
+    assert set(arquivos) == {"tiktok", "instagram"} and all((pasta / a).exists() for a in arquivos.values())
+    res = {"cortes": [{"inicio": 0, "fim": 12, "titulo": "t", "gancho": "GANCHO", "nota": 80, "arquivo": arquivos["tiktok"], "arquivos": arquivos,
+                       "limpo": limpo.name, "palavras": palavras, "duracao": 12.0}]}
+    db.exec("UPDATE trabalhos SET estado='pronto', resultado=? WHERE id=?", (json.dumps(res), tid))
+    pub = c.get(f"/api/trabalhos/{tid}").json()["resultado"]["cortes"][0]
+    assert pub["editavel"] and set(pub["urls"]) == {"tiktok", "instagram"} and "palavras" not in pub
+    assert c.get(pub["urls"]["tiktok"]).status_code == 200
+    r = c.post(f"/api/trabalhos/{tid}/cortes/1", json={"gancho": "novo gancho", "aparar_inicio": 2, "aparar_fim": 1, "legenda": True})
+    assert r.status_code == 200, r.text
+    novo = r.json()["resultado"]["cortes"][0]
+    assert novo["gancho"] == "NOVO GANCHO" and abs(novo["duracao"] - 9.0) < 0.6 and "_ed_" in novo["arquivo"]
+    assert c.post(f"/api/trabalhos/{tid}/cortes/1", json={"aparar_inicio": 8, "aparar_fim": 3}).status_code == 422

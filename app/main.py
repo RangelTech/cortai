@@ -40,7 +40,8 @@ def criar_app(cfg: Config | None = None, iniciar_fila: bool = True) -> FastAPI:
     app.state.cfg, app.state.db = cfg, db
     if cfg.demo_email:  # conta de demonstração: sempre com o plano Turbo ativo
         u = auth.usuario_por_email(db, cfg.demo_email.lower())
-        db.exec("UPDATE usuarios SET plano='turbo', ativo_ate=? WHERE id=?", (agora() + 3650 * 86400, u["id"]))
+        db.exec("UPDATE usuarios SET plano='turbo', ativo_ate=?, arroba=COALESCE(arroba,'cortaioficial'), redes=COALESCE(redes,'instagram,tiktok'), marca_cor=COALESCE(marca_cor,'#ff3d6e') WHERE id=?",
+                (agora() + 3650 * 86400, u["id"]))
     if iniciar_fila:
         app.state.parar = fila.iniciar(db, cfg)
 
@@ -50,12 +51,16 @@ def criar_app(cfg: Config | None = None, iniciar_fila: bool = True) -> FastAPI:
             raise HTTPException(401, "entre na sua conta")
         return u
 
+    def perfil_de(u: dict) -> dict:
+        redes = [r for r in (u.get("redes") or "").split(",") if r]
+        return {"arroba": u.get("arroba") or "", "arroba_tiktok": u.get("arroba_tiktok") or "", "redes": redes, "cor": u.get("marca_cor") or "#ff3d6e"}
+
     def resumo_conta(u: dict) -> dict:
         assin = auth.assinante(u)
         usados = fila.usados_no_mes(db, u["id"])
         pl = PLANOS.get(u["plano"]) or PLANOS["pro"]
         limite = pl["videos_mes"] if assin else cfg.trabalhos_teste
-        return {"email": u["email"], "assinante": assin, "plano": u["plano"] if assin else "teste", "ativo_ate": u["ativo_ate"],
+        return {"email": u["email"], "assinante": assin, "perfil": perfil_de(u), "perfil_ok": bool((u.get("arroba") or u.get("arroba_tiktok")) and u.get("redes")), "plano": u["plano"] if assin else "teste", "ativo_ate": u["ativo_ate"],
                 "usados": usados, "limite": limite, "restam": max(0, limite - usados), "checkout": cfg.checkout_mensal, "planos": planos_publicos()}
 
     def planos_publicos() -> list[dict]:
@@ -135,6 +140,9 @@ def criar_app(cfg: Config | None = None, iniciar_fila: bool = True) -> FastAPI:
         if res:
             for c in res.get("cortes", []):
                 c["url"] = None if apagado else f"/api/trabalhos/{t['id']}/arquivo/{c['arquivo']}"
+                c["urls"] = {} if apagado else {r: f"/api/trabalhos/{t['id']}/arquivo/{a}" for r, a in (c.get("arquivos") or {}).items()}
+                c["editavel"] = bool(c.get("limpo")) and not apagado
+                c.pop("palavras", None)
                 c["capa_url"] = None if apagado or not c.get("capa") else f"/api/trabalhos/{t['id']}/arquivo/{c['capa']}"
         return {"id": t["id"], "tipo": t["tipo"], "estado": t["estado"], "etapa": t["etapa"], "progresso": t["progresso"],
                 "entrada": {"url": entrada.get("url"), "texto": entrada.get("texto")}, "erro": t["erro"], "criado": t["criado"], "fim": t["fim"],
@@ -154,6 +162,8 @@ def criar_app(cfg: Config | None = None, iniciar_fila: bool = True) -> FastAPI:
         if tipo in ("animacao", "clonar") and len(texto) < 8:
             raise HTTPException(422, "conte em uma ou duas frases o vídeo que você quer")
         c = resumo_conta(u)
+        if not c["perfil_ok"]:
+            raise HTTPException(428, "antes do primeiro corte, diga seu @ e para quais redes você vai postar")
         if c["restam"] <= 0:
             raise HTTPException(402, "escolha um plano para começar a criar" if not c["assinante"] else "você usou todos os vídeos do seu plano neste mês; suba de plano para continuar")
         if tipo == "clonar" and c["plano"] == "start":
@@ -167,7 +177,100 @@ def criar_app(cfg: Config | None = None, iniciar_fila: bool = True) -> FastAPI:
             entrada = {"texto": texto, "segundos": max(15, min(60, int(b.get("segundos") or 30))), "voz": "masculina" if b.get("voz") == "masculina" else "feminina"}
         else:
             entrada = {"url": url, "quantos": max(1, min(cfg.max_cortes, int(b.get("quantos") or 3)))}
+        pf = perfil_de(u)
+        entrada["perfil"] = {"arroba": pf["arroba"] or pf["arroba_tiktok"], "redes": pf["redes"], "cor": pf["cor"]}
         tid = fila.criar(db, u["id"], tipo, entrada)
+        return publico(db.um("SELECT * FROM trabalhos WHERE id=?", (tid,)))
+
+    @app.get("/api/biblioteca")
+    def biblioteca_lista(request: Request):
+        usuario(request)
+        from app import biblioteca
+        itens = biblioteca.listar(cfg)
+        for i in itens:
+            i["url"] = f"/api/biblioteca/{i['codigo']}.mp4"
+            i["capa_url"] = f"/api/biblioteca/{i['codigo']}.jpg"
+        return {"itens": itens, "total": len(biblioteca.TEMAS)}
+
+    @app.get("/api/biblioteca/{nome}")
+    def biblioteca_arquivo(nome: str, request: Request, baixar: int = 0):
+        usuario(request)
+        from app import biblioteca
+        if not re.fullmatch(r"[a-z]+\.(mp4|jpg)", nome):
+            raise HTTPException(404, "não encontrado")
+        p = biblioteca.pasta(cfg) / nome
+        if not p.exists():
+            raise HTTPException(404, "não encontrado")
+        return FileResponse(p, media_type="video/mp4" if nome.endswith(".mp4") else "image/jpeg", filename=f"cortai-{nome}" if baixar else None)
+
+    @app.post("/api/admin/biblioteca/gerar")
+    def biblioteca_gerar(request: Request, refazer: int = 0):
+        exigir_admin(request)
+        from app import biblioteca
+        biblioteca.gerar_em_segundo_plano(cfg, bool(refazer))
+        return {"ok": True, "ja_prontos": len(biblioteca.listar(cfg))}
+
+    @app.get("/api/perfil")
+    def perfil_get(request: Request):
+        return perfil_de(usuario(request))
+
+    @app.post("/api/perfil")
+    async def perfil_set(request: Request):
+        u = usuario(request)
+        b = await request.json()
+        limpa = lambda x: re.sub(r"[^A-Za-z0-9_.]", "", str(x or "").strip().lstrip("@"))[:30]
+        arroba, arroba_tt = limpa(b.get("arroba")), limpa(b.get("arroba_tiktok"))
+        redes = [r for r in (b.get("redes") or []) if r in ("tiktok", "instagram", "youtube")]
+        cor = str(b.get("cor") or "#ff3d6e")
+        if not re.fullmatch(r"#[0-9a-fA-F]{6}", cor):
+            cor = "#ff3d6e"
+        if not (arroba or arroba_tt):
+            raise HTTPException(422, "informe seu @ (Instagram ou TikTok)")
+        if not redes:
+            raise HTTPException(422, "escolha pelo menos uma rede")
+        db.exec("UPDATE usuarios SET arroba=?, arroba_tiktok=?, redes=?, marca_cor=? WHERE id=?", (arroba, arroba_tt, ",".join(redes), cor, u["id"]))
+        return perfil_de(db.um("SELECT * FROM usuarios WHERE id=?", (u["id"],)))
+
+    @app.post("/api/trabalhos/{tid}/cortes/{n}")
+    async def editar_corte(tid: str, n: int, request: Request):
+        """Edita um corte pronto a partir do corte limpo: gancho, aparar início/fim, legenda ligada/desligada, cor e @ atuais do perfil."""
+        u = usuario(request)
+        t = db.um("SELECT * FROM trabalhos WHERE id=? AND usuario=?", (tid, u["id"]))
+        if not t or t["estado"] != "pronto":
+            raise HTTPException(404, "corte não encontrado")
+        res = json.loads(t["resultado"])
+        if not (1 <= n <= len(res.get("cortes", []))):
+            raise HTTPException(404, "corte não encontrado")
+        c = res["cortes"][n - 1]
+        pasta = fila.pasta_trabalho(cfg, tid)
+        if not c.get("limpo") or not (pasta / c["limpo"]).exists():
+            raise HTTPException(409, "este corte não pode ser editado (animações, clones e cortes antigos saem prontos)")
+        b = await request.json()
+        from app import estilo
+        import subprocess
+        limpo = pasta / c["limpo"]
+        dur = estilo.duracao(limpo)
+        try:
+            a = max(0.0, float(b.get("aparar_inicio") or 0))
+            z = max(0.0, float(b.get("aparar_fim") or 0))
+        except (TypeError, ValueError):
+            raise HTTPException(422, "valores de corte inválidos")
+        if dur - a - z < 5:
+            raise HTTPException(422, "o corte ficaria curto demais (mínimo 5 segundos)")
+        fonte, palavras = limpo, c.get("palavras") or []
+        if a or z:  # apara a partir do limpo original e realinha as palavras
+            fonte = pasta / f"corte{n}_editado_limpo.mp4"
+            r = subprocess.run(["ffmpeg", "-y", "-loglevel", "error", "-ss", f"{a:.2f}", "-to", f"{dur - z:.2f}", "-i", str(limpo), "-c:v", "libx264", "-preset", "veryfast",
+                                "-crf", "22", "-c:a", "aac", "-b:a", "128k", "-movflags", "+faststart", str(fonte)], capture_output=True, text=True)
+            if r.returncode != 0:
+                raise HTTPException(500, "não consegui aparar o corte agora")
+            palavras = [{**w, "start": round(w["start"] - a, 2), "end": round(w["end"] - a, 2)} for w in palavras if w["end"] > a and w["start"] < dur - z]
+        gancho = str(b.get("gancho") if b.get("gancho") is not None else c.get("gancho", ""))[:60]
+        legenda = bool(b.get("legenda", True))
+        arquivos = estilo.versoes(fonte, palavras, gancho, pasta, f"corte{n}_ed", {**perfil_de(u), "arroba": perfil_de(u)["arroba"] or perfil_de(u)["arroba_tiktok"]}, legenda)
+        c.update({"arquivos": arquivos, "arquivo": next(iter(arquivos.values())), "gancho": gancho.upper(), "legenda_on": legenda,
+                  "editado": {"aparar_inicio": a, "aparar_fim": z}, "duracao": round(dur - a - z, 1)})
+        db.exec("UPDATE trabalhos SET resultado=? WHERE id=?", (json.dumps(res, ensure_ascii=False), tid))
         return publico(db.um("SELECT * FROM trabalhos WHERE id=?", (tid,)))
 
     @app.get("/api/trabalhos")
@@ -186,7 +289,7 @@ def criar_app(cfg: Config | None = None, iniciar_fila: bool = True) -> FastAPI:
     @app.get("/api/trabalhos/{tid}/arquivo/{nome}")
     def arquivo(tid: str, nome: str, request: Request, baixar: int = 0):
         u = usuario(request)
-        if not re.fullmatch(r"corte\d+\.(mp4|jpg)", nome) or not db.um("SELECT 1 FROM trabalhos WHERE id=? AND usuario=?", (tid, u["id"])):
+        if not re.fullmatch(r"corte\d+(_ed)?(_(limpo|tiktok|instagram|youtube))?\.(mp4|jpg)", nome) or not db.um("SELECT 1 FROM trabalhos WHERE id=? AND usuario=?", (tid, u["id"])):
             raise HTTPException(404, "não encontrado")
         p = fila.pasta_trabalho(cfg, tid) / nome
         if not p.exists():

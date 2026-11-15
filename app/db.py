@@ -58,6 +58,10 @@ class Banco:
         self.con.execute("PRAGMA journal_mode=WAL")
         self.con.execute("PRAGMA foreign_keys=ON")
         self.con.executescript(ESQUEMA)
+        cols = {r[1] for r in self.con.execute("PRAGMA table_info(usuarios)")}
+        for col in ("arroba", "arroba_tiktok", "redes", "marca_cor"):  # perfil de marca (polimento 15/11)
+            if col not in cols:
+                self.con.execute(f"ALTER TABLE usuarios ADD COLUMN {col} TEXT")
 
     @contextmanager
     def tx(self):

@@ -15,8 +15,18 @@
     return j
   }
 
+  function abrirPerfil(obrigatorio) {
+    const m = $('#m-perfil'), p = conta?.perfil || {}
+    $('#pf-ig').value = p.arroba ? '@' + p.arroba : ''
+    $('#pf-tt').value = p.arroba_tiktok ? '@' + p.arroba_tiktok : ''
+    $('#pf-cor').value = p.cor || '#ff3d6e'
+    if (p.redes?.length) document.querySelectorAll('.redes-op input').forEach((c) => (c.checked = p.redes.includes(c.value)))
+    m.dataset.obrigatorio = obrigatorio ? '1' : ''
+    m.hidden = false
+  }
   async function carregarConta() {
     conta = await api('/api/conta')
+    if (conta.assinante && !conta.perfil_ok && $('#m-perfil').hidden) abrirPerfil(true)
     $('#cota').innerHTML = conta.assinante ? `<b>${conta.restam}</b> de ${conta.limite} vídeos neste mês` : "Sem plano ativo"
     const f = $('#aviso-assinar')
     const brl2 = (v) => 'R$ ' + Number(v || 0).toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })
@@ -40,8 +50,11 @@
   function cartaoCorte(t, c, k) {
     const nota = c.nota >= 80 ? '' : 'media'
     const tags = (c.hashtags || []).join(' ')
-    return `<div class="corte">
+    const NOME = { tiktok: 'TikTok', instagram: 'Instagram', youtube: 'Shorts' }
+    const redes = Object.keys(c.urls || {})
+    return `<div class="corte" data-trab="${t.id}" data-n="${k}">
       ${c.url ? `<video src="${c.url}" ${c.capa_url ? `poster="${c.capa_url}"` : ''} controls playsinline preload="none"></video>` : '<div class="vazio" style="margin:14px">Arquivo apagado (guardamos por 7 dias)</div>'}
+      ${redes.length > 1 ? `<div class="redes-tab">${redes.map((r, i) => `<button class="${i === 0 ? 'on' : ''}" data-rede-url="${c.urls[r]}">${NOME[r] || r}</button>`).join('')}</div>` : ''}
       <div class="info">
         <div class="top"><span class="nota ${nota}" title="Potencial viral">${c.nota}</span><div><div class="tt">${esc(c.titulo)}</div><div class="mut">Corte ${k} · ${mmss(c.duracao || c.fim - c.inicio)} · do minuto ${mmss(c.inicio)}</div></div></div>
         ${c.motivo ? `<div class="bloco"><strong>Por que pode viralizar</strong>${esc(c.motivo)}</div>` : ''}
@@ -49,7 +62,7 @@
         ${c.legenda ? `<div class="bloco"><strong>Legenda</strong><span>${esc(c.legenda)}</span><button class="copiar" data-copiar="${esc(c.legenda + (tags ? '\n\n' + tags : ''))}">Copiar</button></div>` : ''}
         ${tags ? `<div class="bloco"><strong>Hashtags</strong>${esc(tags)}</div>` : ''}
       </div>
-      ${c.url ? `<div class="acoes"><a class="btn btn-pri" href="${c.url}?baixar=1">Baixar</a></div>` : ''}
+      ${c.url ? `<div class="acoes"><a class="btn btn-pri baixar" href="${c.url}?baixar=1">Baixar${redes.length > 1 ? ' ' + (NOME[redes[0]] || '') : ''}</a>${c.editavel ? `<button class="btn btn-sec" data-editar="${esc(c.gancho || '')}" data-leg="${c.legenda_on === false ? 0 : 1}">Editar</button>` : ''}</div>` : ''}
     </div>`
   }
 
@@ -98,7 +111,26 @@
     }
   }
 
+  let editando = null
   document.addEventListener('click', async (e) => {
+    const rb = e.target.closest('[data-rede-url]')
+    if (rb) {
+      const card = rb.closest('.corte'), v = card.querySelector('video')
+      card.querySelectorAll('.redes-tab button').forEach((b) => b.classList.toggle('on', b === rb))
+      v.src = rb.dataset.redeUrl
+      const bx = card.querySelector('.baixar'); bx.href = rb.dataset.redeUrl + '?baixar=1'; bx.textContent = 'Baixar ' + rb.textContent
+      return
+    }
+    const ed = e.target.closest('[data-editar]')
+    if (ed) {
+      const card = ed.closest('.corte')
+      editando = { tid: card.dataset.trab, n: +card.dataset.n }
+      $('#me-gancho').value = ed.dataset.editar; $('#me-ini').value = 0; $('#me-fim').value = 0; $('#me-leg').checked = ed.dataset.leg === '1'
+      $('#me-msg').textContent = ''; $('#m-editar').hidden = false
+      return
+    }
+    if (e.target.closest('[data-fechar-m]') || e.target.id === 'm-editar') { $('#m-editar').hidden = true; return }
+    if (e.target.id === 'm-perfil' && !$('#m-perfil').dataset.obrigatorio) { $('#m-perfil').hidden = true; return }
     const c = e.target.closest('[data-copiar]')
     if (c) {
       try { await navigator.clipboard.writeText(c.dataset.copiar); c.textContent = 'Copiado!'; setTimeout(() => (c.textContent = 'Copiar'), 1500) } catch {}
@@ -125,6 +157,7 @@
     } catch (err) {
       msg(err.message)
       if (err.status === 402) carregarConta()
+      if (err.status === 428) abrirPerfil(true)
     } finally { b.disabled = false }
   }
   $('#f-texto').onsubmit = async (e) => {
@@ -149,6 +182,36 @@
       listar()
     } catch (err) { msg(err.message); if (err.status === 402) carregarConta() } finally { b.disabled = false }
   }
+  $('#ver-perfil').onclick = () => abrirPerfil(false)
+  $('#f-perfil').onsubmit = async (e) => {
+    e.preventDefault(); const b = e.submitter; b.disabled = true; $('#mp-msg').textContent = ''
+    try {
+      await api('/api/perfil', { method: 'POST', body: JSON.stringify({ arroba: $('#pf-ig').value, arroba_tiktok: $('#pf-tt').value, cor: $('#pf-cor').value,
+        redes: [...document.querySelectorAll('.redes-op input:checked')].map((c) => c.value) }) })
+      $('#m-perfil').hidden = true; await carregarConta()
+    } catch (err) { $('#mp-msg').textContent = err.message; $('#mp-msg').className = 'msg erro' } finally { b.disabled = false }
+  }
+  $('#f-editar').onsubmit = async (e) => {
+    e.preventDefault(); if (!editando) return
+    const b = e.submitter; b.disabled = true; b.textContent = 'Refazendo as versões…'; $('#me-msg').textContent = ''
+    try {
+      await api(`/api/trabalhos/${editando.tid}/cortes/${editando.n}`, { method: 'POST', body: JSON.stringify({ gancho: $('#me-gancho').value, aparar_inicio: +$('#me-ini').value || 0, aparar_fim: +$('#me-fim').value || 0, legenda: $('#me-leg').checked }) })
+      $('#m-editar').hidden = true
+      document.querySelector(`.trab[data-id="${editando.tid}"]`)?.setAttribute('data-estado', 'editado')
+      listar()
+    } catch (err) { $('#me-msg').textContent = err.message; $('#me-msg').className = 'msg erro' } finally { b.disabled = false; b.textContent = 'Salvar e refazer as versões' }
+  }
   $('#sair').onclick = async () => { await fetch('/api/sair', { method: 'POST' }); location.href = '/' }
-  carregarConta().then(listar).catch(() => {})
+  async function carregarBiblioteca() {
+    try {
+      const j = await api('/api/biblioteca')
+      if (!j.itens.length) return
+      $('#biblioteca-sec').hidden = false
+      $('#biblioteca').innerHTML = j.itens.map((i) => `<div class="corte"><video src="${i.url}" poster="${i.capa_url}" controls playsinline preload="none"></video>
+        <div class="info"><div class="top"><span class="tag-nicho">${esc(i.nicho)}</span><div class="tt">${esc(i.titulo)}</div></div>
+        ${i.legenda ? `<div class="bloco"><strong>Legenda</strong><span>${esc(i.legenda)}</span><button class="copiar" data-copiar="${esc(i.legenda + (i.hashtags?.length ? '\n\n' + i.hashtags.join(' ') : ''))}">Copiar</button></div>` : ''}</div>
+        <div class="acoes"><a class="btn btn-pri" href="${i.url}?baixar=1">Baixar</a></div></div>`).join('')
+    } catch {}
+  }
+  carregarConta().then(() => { listar(); carregarBiblioteca() }).catch(() => {})
 })()
