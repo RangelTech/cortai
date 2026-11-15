@@ -18,6 +18,8 @@ import httpx
 from app.config import Config
 from app.pipeline import ErroUsuario, W, H, _ass_tempo, _ass_texto, _filtro_ass, _json_da_resposta, duracao
 
+from app.ganchos import REPERTORIO, estilo_prompt
+
 log = logging.getLogger("cortai.animacao")
 VOZES = {"feminina": "pt-BR-ThalitaMultilingualNeural", "masculina": "pt-BR-AntonioNeural"}
 
@@ -26,10 +28,11 @@ Pedido do cliente: {pedido}
 Duração alvo: {segundos} segundos (cerca de {palavras} palavras de narração no total).
 
 Escreva o roteiro em {cenas} cenas. A 1ª cena é o GANCHO: uma frase que prende nos 2 primeiros segundos.
+{repertorio}
 A última cena termina com uma chamada (seguir, comentar ou salvar).
 Para cada cena: a fala do narrador (curta, natural, sem emoji), um destaque de 2 a 5 palavras para aparecer grande na tela,
 e um prompt de imagem em INGLÊS, detalhado e cinematográfico, vertical, sem texto escrito na imagem e sem pessoas famosas.
-Mantenha o mesmo estilo visual em todas as imagens (diga o estilo em todas).
+Mantenha o mesmo estilo visual em todas as imagens (diga o estilo em todas).{estilo_fixo}
 
 Responda SÓ com JSON:
 {{"titulo": "título do vídeo", "estilo": "estilo visual escolhido",
@@ -37,10 +40,11 @@ Responda SÓ com JSON:
   "legenda": "legenda do post com chamada", "hashtags": ["#..", "#.."]}}"""
 
 
-def roteiro(pedido: str, segundos: int, cfg: Config, cliente: httpx.Client) -> dict:
+def roteiro(pedido: str, segundos: int, cfg: Config, cliente: httpx.Client, estilo_fixo: str | None = None) -> dict:
     cenas = max(4, min(8, round(segundos / 5)))
     corpo = {"model": cfg.llm_modelo, "temperature": 0.8, "max_tokens": 2500, "chat_template_kwargs": {"enable_thinking": False},
-             "messages": [{"role": "user", "content": PROMPT.format(pedido=pedido, segundos=segundos, palavras=int(segundos * 2.4), cenas=cenas)}]}
+             "messages": [{"role": "user", "content": PROMPT.format(pedido=pedido, segundos=segundos, palavras=int(segundos * 2.4), cenas=cenas, repertorio=REPERTORIO,
+                                                                            estilo_fixo=f" O estilo visual é obrigatório: {estilo_fixo}." if estilo_fixo else "")}]}
     for _ in range(2):
         try:
             r = cliente.post(cfg.llm_base + "/chat/completions", headers={"Authorization": f"Bearer {cfg.llm_key}"}, json=corpo, timeout=180)
@@ -154,17 +158,18 @@ def render_cena(img: Path, audio: Path, palavras: list[dict], destaque: str, pas
     return out
 
 
-def animacao_de_texto(pedido: str, pasta: Path, cfg: Config, avisar: Callable[[str, float], None], segundos: int = 30, voz: str = "feminina") -> dict:
+def animacao_de_texto(pedido: str, pasta: Path, cfg: Config, avisar: Callable[[str, float], None], segundos: int = 30, voz: str = "feminina", estilo_cod: str | None = None) -> dict:
     pasta.mkdir(parents=True, exist_ok=True)
+    fixo = estilo_prompt(estilo_cod)
     pedido = pedido.strip()
     if len(pedido) < 8:
         raise ErroUsuario("Escreva um pouco mais sobre o vídeo que você quer.")
     segundos = max(15, min(60, int(segundos)))
     with httpx.Client() as cliente:
         avisar("Escrevendo o roteiro", 0.05)
-        rt = roteiro(pedido, segundos, cfg, cliente)
+        rt = roteiro(pedido, segundos, cfg, cliente, fixo)
     cenas = rt["cenas"]
-    estilo = str(rt.get("estilo") or "cinematic digital illustration, dramatic light")
+    estilo = fixo or str(rt.get("estilo") or "cinematic digital illustration, dramatic light")
     avisar("Gravando a narração", 0.15)
     falas = []
     for i, c in enumerate(cenas, 1):

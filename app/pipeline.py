@@ -19,6 +19,7 @@ from typing import Callable
 import httpx
 
 from app.config import Config
+from app.ganchos import REPERTORIO
 
 log = logging.getLogger("cortai.pipeline")
 FONTES = Path(__file__).resolve().parent.parent / "static" / "fonts"
@@ -120,6 +121,7 @@ Regras:
 - Prefira: opinião forte, história com reviravolta, dica prática, número surpreendente, frase polêmica, humor, emoção.
 - Os cortes não podem se sobrepor.
 - Escreva em português do Brasil.
+- {repertorio}
 
 Responda SÓ com JSON, neste formato:
 {{"resumo": "do que o vídeo trata, em 1 frase",
@@ -154,7 +156,7 @@ def escolher(trans: dict, cfg: Config, cliente: httpx.Client, n: int, trocas: li
     dur = float(trans.get("duration") or (segs[-1]["end"] if segs else 0))
     n = max(1, min(n, cfg.max_cortes, int(dur // 25) or 1))
     corpo = {"model": cfg.llm_modelo, "temperature": 0.4, "max_tokens": 3000, "chat_template_kwargs": {"enable_thinking": False},
-             "messages": [{"role": "user", "content": PROMPT.format(n=n, texto=_texto_transcricao(segs))}]}
+             "messages": [{"role": "user", "content": PROMPT.format(n=n, texto=_texto_transcricao(segs), repertorio=REPERTORIO)}]}
     ultimo = None
     for modelo in dict.fromkeys([cfg.llm_planejador, cfg.llm_modelo]):  # planejador (melhor julgamento) e, se falhar, o modelo da casa
         corpo["model"] = modelo

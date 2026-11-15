@@ -20,6 +20,7 @@
       <button class="aba on" role="tab" aria-selected="true" data-aba="link">Cortes de um link</button>
       <button class="aba" role="tab" data-aba="texto">Animação por texto</button>
       <button class="aba" role="tab" data-aba="reels">Clonar Reels</button>
+      <button class="aba" role="tab" data-aba="falado">Meu vídeo falado</button>
     </div>
     <form id="f-link" class="form-link">
       <input id="url" type="url" required placeholder="Cole aqui o link do vídeo (YouTube, Instagram, TikTok…)" autocomplete="off">
@@ -30,9 +31,16 @@
       <textarea id="texto" rows="3" maxlength="1500" required placeholder="Ex.: curiosidade sobre por que o céu é azul, estilo canal dark, termina pedindo para seguir"></textarea>
       <div class="linha-op">
         <select id="segundos" aria-label="Duração"><option value="30">30 segundos</option><option value="15">15 segundos</option><option value="45">45 segundos</option><option value="60">60 segundos</option></select>
+        <select id="estilo" aria-label="Estilo visual"><option value="">Estilo: a IA escolhe</option><option value="cinema">Cinematográfico</option><option value="3d">3D animado</option><option value="lego">Brinquedo de montar</option><option value="pixel">Pixel art</option><option value="quadro">Quadro negro</option><option value="ps2">Videogame anos 2000</option><option value="hq">História em quadrinhos</option><option value="vetor">Ilustração vetorial</option><option value="neon">Neon que brilha</option><option value="dark">Canal dark</option></select>
         <select id="voz" aria-label="Voz do narrador"><option value="feminina">Voz feminina</option><option value="masculina">Voz masculina</option></select>
         <button class="btn btn-pri" type="submit">Criar animação</button>
       </div>
+    </form>
+    <form id="f-falado" class="form-texto" hidden>
+      <label class="soltar" for="arq-falado"><input id="arq-falado" type="file" accept="video/mp4,video/quicktime,video/webm,.mp4,.mov,.webm,.m4v" hidden>
+        <strong id="arq-nome">Escolha o seu vídeo falando para a câmera</strong><span>MP4, MOV ou WEBM, até 10 minutos. Tiramos as pausas, pomos legenda, gancho e o seu @.</span></label>
+      <button class="btn btn-pri" type="submit">Editar meu vídeo</button>
+      <div class="barra-up" id="barra-up" hidden><i></i></div>
     </form>
     <form id="f-clonar" class="form-texto" hidden>
       <input id="url-ref" type="url" required placeholder="Link do Reels, TikTok ou Shorts que você quer copiar o formato" autocomplete="off">
@@ -92,12 +100,13 @@
   </div>
 </div>
 <script src="/s/painel.js"></script>
-<script>window.TOUR = { chave: 'cortai.tour1', atraso: 1800, passos: [
+<script>window.TOUR = { chave: 'cortai.tour2', atraso: 1800, passos: [
   { titulo: 'Bem-vindo ao Cortaí', texto: 'Em 1 minuto eu te mostro como transformar vídeos em cortes virais prontos para postar.' },
-  { alvo: '.abas', titulo: 'Três jeitos de criar', texto: 'Cortes de um link (YouTube, Instagram, TikTok), animação a partir de um texto, ou clonar o formato de um Reels que bombou.' },
+  { alvo: '.abas', titulo: 'Quatro jeitos de criar', texto: 'Cortes de um link (YouTube, Instagram, TikTok), animação a partir de um texto em 10 estilos, clonar o formato de um Reels que bombou, ou subir o seu próprio vídeo falado para tirarmos as pausas e pormos legenda.' },
   { alvo: '#url', titulo: 'Cole o link aqui', texto: 'Qualquer vídeo público com alguém falando. O Cortaí assiste, transcreve e acha os momentos que prendem.' },
   { alvo: '#quantos', titulo: 'Quantos cortes', texto: 'Escolha de 1 a 5 cortes por vídeo. Cada um sai vertical, com legenda, gancho no topo e áudio ajustado.' },
-  { alvo: '#trabalhos', titulo: 'Seus pedidos', texto: 'Aqui você acompanha o andamento e assiste os cortes prontos. A IA confere cada corte olhando a imagem e refaz o que não ficou bom.' },
+  { alvo: '#ver-perfil', titulo: 'Sua marca', texto: 'Seu @ do Instagram e do TikTok, as redes onde você posta e a cor da marca. Cada corte sai com uma versão para cada rede, no layout certo de cada uma.' },
+  { alvo: '#trabalhos', titulo: 'Seus pedidos', texto: 'Aqui você acompanha o andamento e assiste os cortes prontos. Troque a rede na aba de cada corte, baixe, ou clique em Editar para mudar gancho, aparar e ligar a legenda.' },
   { alvo: '#cota', titulo: 'Seu plano', texto: 'Mostra quantos vídeos você ainda tem no mês. Para ver este tour de novo, clique em Tour.' },
   { titulo: 'Pronto!', texto: 'Cole seu primeiro link e veja a mágica. Use a legenda e as hashtags sugeridas para postar.' },
 ] }</script>

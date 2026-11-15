@@ -142,6 +142,7 @@
       $('#f-link').hidden = qual !== 'link'
       $('#f-texto').hidden = qual !== 'texto'
       $('#f-clonar').hidden = qual !== 'reels'
+      $('#f-falado').hidden = qual !== 'falado'
       $('#em-breve').hidden = true
     }
   })
@@ -164,7 +165,7 @@
     e.preventDefault()
     const b = e.submitter; b.disabled = true; msg('')
     try {
-      await api('/api/trabalhos', { method: 'POST', body: JSON.stringify({ tipo: 'animacao', texto: $('#texto').value.trim(), segundos: +$('#segundos').value, voz: $('#voz').value }) })
+      await api('/api/trabalhos', { method: 'POST', body: JSON.stringify({ tipo: 'animacao', texto: $('#texto').value.trim(), segundos: +$('#segundos').value, voz: $('#voz').value, estilo: $('#estilo').value }) })
       $('#texto').value = ''
       msg('Pedido recebido! A animação fica pronta em poucos minutos.', 'ok')
       await carregarConta()
@@ -181,6 +182,25 @@
       await carregarConta()
       listar()
     } catch (err) { msg(err.message); if (err.status === 402) carregarConta() } finally { b.disabled = false }
+  }
+  $('#arq-falado').onchange = () => { const f = $('#arq-falado').files[0]; $('#arq-nome').textContent = f ? `${f.name} (${(f.size / 1048576).toFixed(0)} MB)` : 'Escolha o seu vídeo falando para a câmera' }
+  $('#f-falado').onsubmit = (e) => {
+    e.preventDefault()
+    const f = $('#arq-falado').files[0]
+    if (!f) { msg('Escolha o vídeo primeiro.'); return }
+    if (f.size > 400 * 1048576) { msg('O vídeo passa de 400 MB; exporte em 1080p ou menos.'); return }
+    const b = e.submitter; b.disabled = true; const barra = $('#barra-up'); barra.hidden = false
+    const x = new XMLHttpRequest()
+    x.open('POST', '/api/falado'); x.setRequestHeader('x-arquivo', f.name.replace(/[^\w.\-]/g, '_'))
+    x.upload.onprogress = (ev) => { if (ev.lengthComputable) barra.firstElementChild.style.width = (100 * ev.loaded / ev.total).toFixed(0) + '%' }
+    x.onload = () => {
+      b.disabled = false; barra.hidden = true
+      if (x.status >= 200 && x.status < 300) { $('#arq-falado').value = ''; $('#arq-nome').textContent = 'Escolha o seu vídeo falando para a câmera'; msg('Recebido! Está na fila.', 'ok'); listar(); carregarConta(); return }
+      let m = 'Não consegui enviar agora.'; try { m = JSON.parse(x.responseText).detail || m } catch {}
+      msg(m); if (x.status === 428) abrirPerfil(true)
+    }
+    x.onerror = () => { b.disabled = false; barra.hidden = true; msg('A conexão caiu durante o envio. Tente de novo.') }
+    x.send(f)
   }
   $('#ver-perfil').onclick = () => abrirPerfil(false)
   $('#f-perfil').onsubmit = async (e) => {

@@ -174,13 +174,55 @@ def criar_app(cfg: Config | None = None, iniciar_fila: bool = True) -> FastAPI:
         if tipo == "clonar":
             entrada = {"url": url, "texto": texto, "voz": "masculina" if b.get("voz") == "masculina" else "feminina"}
         elif tipo == "animacao":
-            entrada = {"texto": texto, "segundos": max(15, min(60, int(b.get("segundos") or 30))), "voz": "masculina" if b.get("voz") == "masculina" else "feminina"}
+            from app.ganchos import ESTILOS
+            entrada = {"texto": texto, "segundos": max(15, min(60, int(b.get("segundos") or 30))), "voz": "masculina" if b.get("voz") == "masculina" else "feminina",
+                       "estilo": b.get("estilo") if b.get("estilo") in ESTILOS else None}
         else:
             entrada = {"url": url, "quantos": max(1, min(cfg.max_cortes, int(b.get("quantos") or 3)))}
         pf = perfil_de(u)
         entrada["perfil"] = {"arroba": pf["arroba"] or pf["arroba_tiktok"], "redes": pf["redes"], "cor": pf["cor"]}
         tid = fila.criar(db, u["id"], tipo, entrada)
         return publico(db.um("SELECT * FROM trabalhos WHERE id=?", (tid,)))
+
+    @app.post("/api/falado")
+    async def novo_falado(request: Request):
+        """Sobe o vídeo falado (corpo cru, até 400 MB) e cria o pedido. Sem multipart para não depender de biblioteca extra."""
+        u = usuario(request)
+        c = resumo_conta(u)
+        if not c["perfil_ok"]:
+            raise HTTPException(428, "antes do primeiro corte, diga seu @ e para quais redes você vai postar")
+        if c["restam"] <= 0:
+            raise HTTPException(402, "escolha um plano para começar a criar" if not c["assinante"] else "você usou todos os vídeos do seu plano neste mês; suba de plano para continuar")
+        if db.um("SELECT COUNT(*) n FROM trabalhos WHERE usuario=? AND estado IN ('fila','rodando')", (u["id"],))["n"] >= 2:
+            raise HTTPException(429, "espere um dos seus pedidos terminar para mandar outro")
+        nome = request.headers.get("x-arquivo") or "video.mp4"
+        ext = ("." + nome.rsplit(".", 1)[-1].lower()) if "." in nome else ".mp4"
+        if ext not in (".mp4", ".mov", ".webm", ".mkv", ".m4v"):
+            raise HTTPException(422, "mande um vídeo MP4, MOV ou WEBM")
+        import uuid as _uuid
+        dest_dir = Path(cfg.dados) / "uploads"
+        dest_dir.mkdir(parents=True, exist_ok=True)
+        dest = dest_dir / f"{_uuid.uuid4().hex}{ext}"
+        total = 0
+        with open(dest, "wb") as f:
+            async for parte in request.stream():
+                total += len(parte)
+                if total > 400 * 1024 * 1024:
+                    f.close(); dest.unlink(missing_ok=True)
+                    raise HTTPException(413, "o vídeo passa de 400 MB; exporte em 1080p ou menos")
+                f.write(parte)
+        if total < 10_000:
+            dest.unlink(missing_ok=True)
+            raise HTTPException(422, "o arquivo chegou vazio; tente de novo")
+        pf = perfil_de(u)
+        entrada = {"upload": str(dest), "nome": nome[:120], "perfil": {"arroba": pf["arroba"] or pf["arroba_tiktok"], "redes": pf["redes"], "cor": pf["cor"]}}
+        tid = fila.criar(db, u["id"], "falado", entrada)
+        return publico(db.um("SELECT * FROM trabalhos WHERE id=?", (tid,)))
+
+    @app.get("/api/estilos")
+    def estilos():
+        from app.ganchos import ESTILOS
+        return {"estilos": [{"codigo": k, "nome": v[0]} for k, v in ESTILOS.items()]}
 
     @app.get("/api/biblioteca")
     def biblioteca_lista(request: Request):

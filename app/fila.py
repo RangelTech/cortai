@@ -67,8 +67,11 @@ def _rodar(db: Banco, cfg: Config, t: dict) -> None:
             _marcar(res, pasta, entrada.get("perfil"))
         elif t["tipo"] == "animacao":
             from app import animacao
-            res = animacao.animacao_de_texto(entrada["texto"], pasta, cfg, avisar, int(entrada.get("segundos") or 30), entrada.get("voz") or "feminina")
+            res = animacao.animacao_de_texto(entrada["texto"], pasta, cfg, avisar, int(entrada.get("segundos") or 30), entrada.get("voz") or "feminina", entrada.get("estilo"))
             _marcar(res, pasta, entrada.get("perfil"))
+        elif t["tipo"] == "falado":
+            from app import falado
+            res = falado.editar_falado(Path(entrada["upload"]), pasta, cfg, avisar, entrada.get("perfil"))
         else:
             raise pipeline.ErroUsuario("Esse tipo de pedido ainda não está disponível.")
         db.exec("UPDATE trabalhos SET estado='pronto', etapa='Pronto', progresso=1, resultado=?, fim=? WHERE id=?",

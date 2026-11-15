@@ -43,6 +43,12 @@
 .dicas b{color:var(--fg)}
 .dicas ul{margin:6px 0 0;padding-left:18px}
 @media (max-width:640px){.form-link{grid-template-columns:1fr}.form-link select{width:100%}.cota{display:none}}
+.soltar{display:grid;gap:6px;place-items:center;text-align:center;border:1.5px dashed var(--bd);border-radius:16px;padding:28px 16px;cursor:pointer;background:var(--bg2);transition:border-color .2s}
+.soltar:hover{border-color:rgba(255,61,110,.6)}
+.soltar strong{font-size:16px}
+.soltar span{color:var(--mut);font-size:14px}
+.barra-up{height:6px;border-radius:6px;background:var(--bd);overflow:hidden}
+.barra-up i{display:block;height:100%;width:0;background:var(--ac);transition:width .2s}
 .sub-sec{color:var(--mut);margin:-6px 0 14px}
 .tag-nicho{font:800 11px system-ui;text-transform:uppercase;letter-spacing:.04em;color:var(--ac2);background:rgba(255,61,110,.12);border-radius:6px;padding:3px 8px;white-space:nowrap}
 .redes-tab{display:flex;gap:6px;padding:10px 14px 0}

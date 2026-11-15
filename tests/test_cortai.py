@@ -238,3 +238,42 @@ def test_versoes_por_rede_e_edicao(cli, tmp_path):
     novo = r.json()["resultado"]["cortes"][0]
     assert novo["gancho"] == "NOVO GANCHO" and abs(novo["duracao"] - 9.0) < 0.6 and "_ed_" in novo["arquivo"]
     assert c.post(f"/api/trabalhos/{tid}/cortes/1", json={"aparar_inicio": 8, "aparar_fim": 3}).status_code == 422
+
+
+def test_trechos_falados_tiram_pausas_e_muletas():
+    from app import falado
+    pal = [{"start": 0.5, "end": 0.9, "word": "Oi"}, {"start": 1.0, "end": 1.4, "word": "gente"},
+           {"start": 3.5, "end": 3.8, "word": "éé"},                       # muleta sozinha: sai
+           {"start": 5.0, "end": 5.5, "word": "hoje"}, {"start": 5.6, "end": 6.0, "word": "vamos"}]
+    tr = falado.trechos_falados(pal, 8.0)
+    assert len(tr) == 2 and tr[0][0] == 0.4 and tr[1][0] == 4.9
+    novas = falado.remapear(pal, tr)
+    assert [w["word"] for w in novas] == ["Oi", "gente", "hoje", "vamos"]
+    assert novas[2]["start"] < 1.4 and novas[-1]["end"] <= sum(b - a for a, b in tr) + 0.01
+
+
+def test_video_falado_ponta_a_ponta(cli, monkeypatch):
+    """Sobe um vídeo de 10 s com 4 s de silêncio no meio: sai mais curto, com versão TikTok e Instagram e o @ do perfil."""
+    import subprocess
+    from pathlib import Path
+    from app import falado, fila
+    c, app = cli
+    entrar(c); assinar(c)
+    tmp = Path(app.state.cfg.dados) / "in.mp4"
+    subprocess.run(["ffmpeg", "-y", "-loglevel", "error", "-f", "lavfi", "-i", "color=c=gray:s=1280x720:d=10", "-f", "lavfi", "-i", "sine=f=300:d=10",
+                    "-shortest", "-c:v", "libx264", "-preset", "ultrafast", "-c:a", "aac", str(tmp)], check=True)
+    r = c.post("/api/falado", content=tmp.read_bytes(), headers={"x-arquivo": "meu video.mp4"})
+    assert r.status_code == 200, r.text
+    tid = r.json()["id"]
+    palavras = [{"start": 0.3 + i * 0.4, "end": 0.6 + i * 0.4, "word": f"p{i}"} for i in range(8)] + \
+               [{"start": 7.0 + i * 0.4, "end": 7.3 + i * 0.4, "word": f"q{i}"} for i in range(6)]
+    monkeypatch.setattr(falado, "transcrever", lambda audio, cfg, cli_: {"segments": [{"start": 0, "end": 10, "text": "x"}], "words": palavras})
+    monkeypatch.setattr(falado, "textos", lambda fala, cfg, cli_: {"titulo": "Meu teste", "gancho": "olha isso", "legenda": "comenta", "hashtags": ["#a"]})
+    t = app.state.db.um("SELECT * FROM trabalhos WHERE id=?", (tid,))
+    fila._rodar(app.state.db, app.state.cfg, t)
+    t = c.get(f"/api/trabalhos/{tid}").json()
+    assert t["estado"] == "pronto", t
+    corte = t["resultado"]["cortes"][0]
+    assert set(corte["urls"]) == {"instagram", "tiktok"} and corte["gancho"] == "OLHA ISSO"
+    assert corte["duracao"] < 7.5 and c.get(corte["urls"]["tiktok"]).status_code == 200
+    assert not list((Path(app.state.cfg.dados) / "uploads").glob("*"))
