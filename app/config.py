@@ -26,7 +26,7 @@ class Config:
     checkout_mensal: str = ""
     trabalhos_teste: int = 0          # sem plano grátis (decisão do Lucas, 14/11)
     trabalhos_mes: int = 60           # limite do plano mensal
-    max_duracao_s: int = 3600         # vídeo de entrada: até 1 h
+    max_duracao_s: int = 6 * 3600     # vídeo de entrada: lives de até 6 h
     max_cortes: int = 5
     workers: int = 1
     guardar_dias: int = 7
@@ -61,7 +61,7 @@ def carregar() -> Config:
         checkout_mensal=e("CORTAI_CHECKOUT_MENSAL", ""),
         trabalhos_teste=int(e("CORTAI_TRABALHOS_TESTE", "0")),
         trabalhos_mes=int(e("CORTAI_TRABALHOS_MES", "60")),
-        max_duracao_s=int(e("CORTAI_MAX_DURACAO_S", "3600")),
+        max_duracao_s=int(e("CORTAI_MAX_DURACAO_S", str(6 * 3600))),
         max_cortes=int(e("CORTAI_MAX_CORTES", "5")),
         workers=int(e("CORTAI_WORKERS", "1")),
         guardar_dias=int(e("CORTAI_GUARDAR_DIAS", "7")),

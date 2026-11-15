@@ -44,7 +44,7 @@ def baixar(url: str, pasta: Path, cfg: Config) -> dict:
         "no_warnings": True,
         "socket_timeout": 30,
         "retries": 3,
-        "max_filesize": 1_500_000_000,
+        "max_filesize": 4_000_000_000,
     }
     if cfg.proxy:
         opcoes["proxy"] = cfg.proxy
@@ -64,6 +64,8 @@ def baixar(url: str, pasta: Path, cfg: Config) -> dict:
         raise ErroUsuario(f"O vídeo tem {int(dur // 60)} minutos. O limite é {cfg.max_duracao_s // 60} minutos.")
     if info.get("is_live"):
         raise ErroUsuario("Transmissão ao vivo ainda não funciona. Mande o link depois que a live terminar.")
+    if dur > 90 * 60:  # live longa: 480p basta para o corte vertical e o download cabe no disco
+        opcoes["format"] = "bv*[height<=480][ext=mp4]+ba[ext=m4a]/bv*[height<=480]+ba/b[height<=480]/b"
     with yt_dlp.YoutubeDL(opcoes) as y:
         y.download([url])
     arq = next((p for p in pasta.glob("origem.*") if p.suffix in (".mp4", ".mkv", ".webm", ".mov")), None)
@@ -98,7 +100,55 @@ def extrair_audio(arq: str, pasta: Path) -> Path:
     return out
 
 
+PEDACO_S = 30 * 60
+
+
 def transcrever(audio: Path, cfg: Config, cliente: httpx.Client) -> dict:
+    """Áudio longo (live de horas) vai em pedaços de 30 min; os tempos de cada pedaço são somados ao deslocamento."""
+    dur = duracao(audio)
+    if dur <= PEDACO_S + 120:
+        return _transcrever_um(audio, cfg, cliente)
+    pasta = audio.parent / "pedacos"
+    pasta.mkdir(exist_ok=True)
+    subprocess.run(["ffmpeg", "-y", "-loglevel", "error", "-i", str(audio), "-f", "segment", "-segment_time", str(PEDACO_S), "-reset_timestamps", "1", "-c", "copy",
+                    str(pasta / "p%03d.ogg")], check=True)
+    segs, words, desloc = [], [], 0.0
+    try:
+        for p in sorted(pasta.glob("p*.ogg")):
+            dp = duracao(p)
+            if dp < 1:
+                continue
+            j = _transcrever_um(p, cfg, cliente)
+            segs += [{**s, "start": s["start"] + desloc, "end": s["end"] + desloc} for s in j["segments"]]
+            words += [{**w, "start": w["start"] + desloc, "end": w["end"] + desloc} for w in j.get("words") or []]
+            desloc += dp
+    finally:
+        for p in pasta.glob("*"):
+            p.unlink(missing_ok=True)
+        pasta.rmdir()
+    return {"segments": segs, "words": words, "duration": dur, "text": " ".join(s["text"] for s in segs)}
+
+
+def picos_de_volume(audio: Path, max_picos: int = 40) -> list[float]:
+    """Segundos com grito, risada ou reação (volume bem acima do normal do vídeo). Bom para live e gameplay."""
+    r = subprocess.run(["ffmpeg", "-hide_banner", "-nostats", "-i", str(audio), "-af",
+                        "aresample=8000,asetnsamples=8000,astats=metadata=1:reset=1,ametadata=print:key=lavfi.astats.Overall.RMS_level",
+                        "-f", "null", "-"], capture_output=True, text=True)
+    niveis = [float(x) for x in re.findall(r"RMS_level=(-?[0-9.]+)", r.stderr) if x not in ("-inf", "inf")]
+    if len(niveis) < 60:
+        return []
+    ordenados = sorted(niveis)
+    corte = ordenados[len(ordenados) // 2] + 12  # 12 dB acima da mediana
+    picos: list[float] = []
+    for t, v in sorted(enumerate(niveis), key=lambda x: -x[1]):
+        if v < corte or len(picos) >= max_picos:
+            break
+        if all(abs(t - p) > 20 for p in picos):
+            picos.append(float(t))
+    return sorted(picos)
+
+
+def _transcrever_um(audio: Path, cfg: Config, cliente: httpx.Client) -> dict:
     with open(audio, "rb") as f:
         r = cliente.post(cfg.llm_base + "/audio/transcriptions", headers={"Authorization": f"Bearer {cfg.llm_key}"},
                          files={"file": ("audio.ogg", f, "audio/ogg")},
@@ -151,12 +201,51 @@ def _json_da_resposta(txt: str) -> dict:
     return json.loads(m.group(0))
 
 
-def escolher(trans: dict, cfg: Config, cliente: httpx.Client, n: int, trocas: list[float] | None = None) -> dict:
+JANELA_TXT = 45000
+
+
+def escolher(trans: dict, cfg: Config, cliente: httpx.Client, n: int, trocas: list[float] | None = None, picos: list[float] | None = None) -> dict:
+    """Vídeo curto: uma escolha só. Live longa: escolhe candidatos em janelas da transcrição e fica com os de nota maior."""
     segs = trans["segments"]
     dur = float(trans.get("duration") or (segs[-1]["end"] if segs else 0))
     n = max(1, min(n, cfg.max_cortes, int(dur // 25) or 1))
+    linhas = [f"[{s['start']:.1f}-{s['end']:.1f}] {s['text']}" for s in segs]
+    if sum(len(x) + 1 for x in linhas) <= JANELA_TXT * 1.3:
+        return _escolher_janela(segs, segs, dur, cfg, cliente, n, trocas, picos)
+    janelas, atual, tam = [], [], 0
+    for s, l in zip(segs, linhas):
+        if tam + len(l) > JANELA_TXT and atual:
+            janelas.append(atual); atual, tam = [], 0
+        atual.append(s); tam += len(l) + 1
+    if atual:
+        janelas.append(atual)
+    candidatos, resumos = [], []
+    for jan in janelas:
+        p_jan = [p for p in (picos or []) if jan[0]["start"] <= p <= jan[-1]["end"]]
+        r = _escolher_janela(jan, segs, dur, cfg, cliente, min(n, 3), trocas, p_jan)
+        candidatos += r["cortes"]; resumos.append(r["resumo"])
+    candidatos.sort(key=lambda c: -float(c.get("nota") or 0))
+    escolhidos: list[dict] = []
+    for c in candidatos:
+        if all(c["fim"] <= e["inicio"] or c["inicio"] >= e["fim"] for e in escolhidos):
+            escolhidos.append(c)
+        if len(escolhidos) >= n:
+            break
+    escolhidos.sort(key=lambda c: c["inicio"])
+    for k, c in enumerate(escolhidos, 1):
+        if re.fullmatch(r"Corte \d+", str(c.get("titulo") or "")):
+            c["titulo"] = f"Corte {k}"
+    return {"resumo": next((x for x in resumos if x), ""), "cortes": escolhidos}
+
+
+def _escolher_janela(segs_jan: list[dict], segs: list[dict], dur: float, cfg: Config, cliente: httpx.Client, n: int,
+                     trocas: list[float] | None, picos: list[float] | None) -> dict:
+    texto = _texto_transcricao(segs_jan)
+    if picos:
+        texto += "\n\nMomentos de grito, risada ou reação forte (pico de volume, em segundos): " + ", ".join(f"{p:.0f}" for p in picos) + \
+                 ". Em live e gameplay, esses momentos costumam ser os melhores cortes: prefira trechos que contenham um deles."
     corpo = {"model": cfg.llm_modelo, "temperature": 0.4, "max_tokens": 3000, "chat_template_kwargs": {"enable_thinking": False},
-             "messages": [{"role": "user", "content": PROMPT.format(n=n, texto=_texto_transcricao(segs), repertorio=REPERTORIO)}]}
+             "messages": [{"role": "user", "content": PROMPT.format(n=n, texto=texto, repertorio=REPERTORIO)}]}
     ultimo = None
     for modelo in dict.fromkeys([cfg.llm_planejador, cfg.llm_modelo]):  # planejador (melhor julgamento) e, se falhar, o modelo da casa
         corpo["model"] = modelo
@@ -171,7 +260,8 @@ def escolher(trans: dict, cfg: Config, cliente: httpx.Client, n: int, trocas: li
             ultimo = e
             log.warning("escolha pela IA falhou: %s", e)
     log.warning("usando escolha automatica (sem IA): %s", ultimo)
-    return {"resumo": "", "cortes": escolha_automatica(segs, dur, n)}
+    fim_jan = segs_jan[-1]["end"] if segs_jan else dur
+    return {"resumo": "", "cortes": escolha_automatica(segs_jan, fim_jan, n)}
 
 
 def _ajustar_a_frases(ini: float, fim: float, segs: list[dict]) -> tuple[float, float]:
@@ -334,14 +424,15 @@ def cortes_de_link(url: str, pasta: Path, cfg: Config, avisar: Callable[[str, fl
             avisar("Ouvindo e transcrevendo a fala", 0.25)
             audio = extrair_audio(info["arquivo"], pasta)
             trans = transcrever(audio, cfg, cliente)
+            picos = picos_de_volume(audio)
             audio.unlink(missing_ok=True)
             if len(" ".join(s["text"] for s in trans["segments"]).split()) < 25:
                 raise ErroUsuario("Quase não tem fala nesse vídeo. Os cortes virais precisam de alguém falando.")
             from app import diretor
             avisar("Encontrando as trocas de cena", 0.38)
-            trocas = diretor.cenas(info["arquivo"])
+            trocas = diretor.cenas(info["arquivo"], fps=5 if float(info.get("duracao") or 0) <= 3600 else 2)
             avisar("Procurando os momentos com mais potencial", 0.45)
-            escolha = escolher(trans, cfg, cliente, quantos, trocas)
+            escolha = escolher(trans, cfg, cliente, quantos, trocas, picos)
             prontos = []
             palavras = trans.get("words") or []
             segs = trans["segments"]

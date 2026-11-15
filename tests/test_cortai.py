@@ -277,3 +277,42 @@ def test_video_falado_ponta_a_ponta(cli, monkeypatch):
     assert set(corte["urls"]) == {"instagram", "tiktok"} and corte["gancho"] == "OLHA ISSO"
     assert corte["duracao"] < 7.5 and c.get(corte["urls"]["tiktok"]).status_code == 200
     assert not list((Path(app.state.cfg.dados) / "uploads").glob("*"))
+
+
+def test_live_longa_escolhe_em_janelas(monkeypatch):
+    """Transcrição de 4 h (muito texto): a IA é chamada por janela e ficam os cortes de nota maior, sem sobrepor."""
+    from app import pipeline
+    segs = [{"start": i * 6.0, "end": i * 6.0 + 5.5, "text": f"frase numero {i} " + "bla " * 12} for i in range(2400)]
+    chamadas = []
+
+    def falso(segs_jan, segs_, dur, cfg, cli_, n, trocas, picos):
+        chamadas.append(len(segs_jan))
+        a = segs_jan[len(segs_jan) // 2]["start"]
+        return {"resumo": "live", "cortes": [{"inicio": a, "fim": a + 30, "titulo": "t", "nota": 50 + len(chamadas)}]}
+    monkeypatch.setattr(pipeline, "_escolher_janela", falso)
+    r = pipeline.escolher({"segments": segs, "duration": 14400}, Config(), None, 3)
+    assert len(chamadas) > 3 and len(r["cortes"]) == 3
+    assert [c["nota"] for c in sorted(r["cortes"], key=lambda c: -c["nota"])][0] == 50 + len(chamadas)
+
+
+def test_transcricao_em_pedacos_soma_deslocamento(tmp_path, monkeypatch):
+    import subprocess
+    from app import pipeline
+    a = tmp_path / "audio.ogg"
+    subprocess.run(["ffmpeg", "-y", "-loglevel", "error", "-f", "lavfi", "-i", "sine=f=200:d=300", "-ac", "1", "-ar", "16000", "-c:a", "libopus", str(a)], check=True)
+    monkeypatch.setattr(pipeline, "PEDACO_S", 60)
+    monkeypatch.setattr(pipeline, "_transcrever_um", lambda p, cfg, c: {"segments": [{"start": 1.0, "end": 2.0, "text": "oi"}], "words": [{"start": 1.0, "end": 1.5, "word": "oi"}]})
+    j = pipeline.transcrever(a, Config(), None)
+    assert len(j["segments"]) == 5 and abs(j["segments"][1]["start"] - 61.0) < 1.5 and abs(j["segments"][2]["start"] - 121.0) < 2.5
+    assert not (tmp_path / "pedacos").exists()
+
+
+def test_picos_de_volume(tmp_path):
+    import subprocess
+    from app import pipeline
+    a = tmp_path / "a.ogg"
+    # 120 s baixinho com 2 gritos (volume alto) em 40 s e 90 s
+    subprocess.run(["ffmpeg", "-y", "-loglevel", "error", "-f", "lavfi", "-i", "sine=f=300:d=120", "-af",
+                    "volume='if(between(t,40,42)+between(t,90,92),1,0.02)':eval=frame", "-ac", "1", "-ar", "16000", "-c:a", "libopus", str(a)], check=True)
+    p = pipeline.picos_de_volume(a)
+    assert any(39 <= x <= 43 for x in p) and any(89 <= x <= 93 for x in p) and len(p) <= 4

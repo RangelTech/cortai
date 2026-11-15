@@ -22,8 +22,8 @@ log = logging.getLogger("cortai.diretor")
 JANELA_CENA = 1.5
 
 
-def cenas(arq: str, limiar: float = 0.18) -> list[float]:
-    r = subprocess.run(["ffmpeg", "-hide_banner", "-nostats", "-i", arq, "-an", "-vf", f"fps=5,scale=320:-2,select='gt(scene,{limiar})',showinfo",
+def cenas(arq: str, limiar: float = 0.18, fps: int = 5) -> list[float]:
+    r = subprocess.run(["ffmpeg", "-hide_banner", "-nostats", "-i", arq, "-an", "-vf", f"fps={fps},scale=320:-2,select='gt(scene,{limiar})',showinfo",
                         "-f", "null", "-"], capture_output=True, text=True)
     return sorted({round(float(t), 2) for t in re.findall(r"pts_time:([0-9.]+)", r.stderr)})
 
