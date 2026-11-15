@@ -13,6 +13,7 @@ from fastapi import FastAPI, HTTPException, Request
 from fastapi.responses import FileResponse, HTMLResponse, JSONResponse, RedirectResponse
 from fastapi.staticfiles import StaticFiles
 
+from app import senha_rotas
 from app import auth, fila, mailer
 from app.config import Config, carregar
 from app.db import Banco, agora
@@ -103,19 +104,13 @@ def criar_app(cfg: Config | None = None, iniciar_fila: bool = True) -> FastAPI:
         return resp
 
 
-    @app.post("/api/entrar/senha")
-    async def entrar_senha(request: Request):
-        """Só a conta de DEMONSTRAÇÃO entra com senha (para apresentar o produto); clientes entram pelo código no e-mail."""
-        b = await request.json()
-        email = auth.normalizar_email(b.get("email"))
-        if not (cfg.demo_email and cfg.demo_senha and email == cfg.demo_email.lower()
-                and hmac.compare_digest(str(b.get("senha") or ""), cfg.demo_senha)):
-            raise HTTPException(400, "e-mail ou senha incorretos (a senha vale só para a conta de demonstração)")
-        u = auth.usuario_por_email(db, email)
+    def _login(u: dict) -> JSONResponse:
         token = auth.criar_sessao(db, cfg.segredo_sessao, u["id"])
         resp = JSONResponse({"ok": True})
         resp.set_cookie(COOKIE, token, max_age=auth.SESSAO_S, httponly=True, secure=not cfg.dev, samesite="lax", path="/")
         return resp
+
+    senha_rotas.registrar(app, db, cfg, mailer, _login, usuario)  # senha (padrão), código (opção), esqueci a senha
 
     @app.post("/api/sair")
     def sair(request: Request):

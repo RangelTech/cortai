@@ -11,7 +11,7 @@
 <body>
 <header class="topo"><div class="wrap">
   <a class="marca" href="/painel">Cort<span>aí</span></a>
-  <nav><span id="cota" class="cota"></span><button class="btn btn-sec" id="ver-perfil">Minha marca</button><button class="btn btn-sec" id="ver-tour" onclick="SBTour.abrir()">Tour</button><button class="btn btn-sec" id="sair">Sair</button></nav>
+  <nav><span id="cota" class="cota"></span><button class="btn btn-sec" id="ver-perfil">Minha marca</button><button class="btn btn-sec" id="ver-tour" onclick="SBTour.abrir()">Tour</button><button class="btn btn-sec" data-senha>Senha</button><button class="btn btn-sec" id="sair">Sair</button></nav>
 </div></header>
 <main class="wrap painel">
   <div id="aviso-assinar" class="faixa" hidden></div>
@@ -100,6 +100,7 @@
   </div>
 </div>
 <script src="/s/painel.js"></script>
+<script src="/s/login.js"></script>
 <script>window.TOUR = { chave: 'cortai.tour2', atraso: 1800, passos: [
   { titulo: 'Bem-vindo ao Cortaí', texto: 'Em 1 minuto eu te mostro como transformar vídeos em cortes virais prontos para postar.' },
   { alvo: '.abas', titulo: 'Quatro jeitos de criar', texto: 'Cortes de um link (YouTube, Instagram, TikTok), animação a partir de um texto em 10 estilos, clonar o formato de um Reels que bombou, ou subir o seu próprio vídeo falado para tirarmos as pausas e pormos legenda.' },
