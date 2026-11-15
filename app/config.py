@@ -13,6 +13,9 @@ class Config:
     llm_base: str = "https://qwen.rangeltech.net/v1"
     llm_key: str = ""
     llm_modelo: str = "qwen-abliterated"
+    llm_planejador: str = "rt-planejar"   # escolhe os trechos (Claude/ChatGPT), com llm_modelo de reserva
+    llm_visao: str = "visao"              # valida olhando os quadros (ChatGPT)
+    validar: bool = True
     segredo_sessao: str = "dev"
     smtp_host: str = ""
     smtp_port: int = 587
@@ -43,6 +46,9 @@ def carregar() -> Config:
         llm_base=e("CORTAI_LLM_BASE", "https://qwen.rangeltech.net/v1").rstrip("/"),
         llm_key=e("CORTAI_LLM_KEY", ""),
         llm_modelo=e("CORTAI_LLM_MODELO", "qwen-abliterated"),
+        llm_planejador=e("CORTAI_LLM_PLANEJADOR", "rt-planejar"),
+        llm_visao=e("CORTAI_LLM_VISAO", "visao"),
+        validar=e("CORTAI_VALIDAR", "1") == "1",
         segredo_sessao=e("CORTAI_SEGREDO_SESSAO", "dev"),
         smtp_host=e("SMTP_HOST", ""),
         smtp_port=int(e("SMTP_PORT", "587") or 587),

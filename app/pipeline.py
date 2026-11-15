@@ -149,19 +149,20 @@ def _json_da_resposta(txt: str) -> dict:
     return json.loads(m.group(0))
 
 
-def escolher(trans: dict, cfg: Config, cliente: httpx.Client, n: int) -> dict:
+def escolher(trans: dict, cfg: Config, cliente: httpx.Client, n: int, trocas: list[float] | None = None) -> dict:
     segs = trans["segments"]
     dur = float(trans.get("duration") or (segs[-1]["end"] if segs else 0))
     n = max(1, min(n, cfg.max_cortes, int(dur // 25) or 1))
     corpo = {"model": cfg.llm_modelo, "temperature": 0.4, "max_tokens": 3000, "chat_template_kwargs": {"enable_thinking": False},
              "messages": [{"role": "user", "content": PROMPT.format(n=n, texto=_texto_transcricao(segs))}]}
     ultimo = None
-    for _ in range(2):
+    for modelo in dict.fromkeys([cfg.llm_planejador, cfg.llm_modelo]):  # planejador (melhor julgamento) e, se falhar, o modelo da casa
+        corpo["model"] = modelo
         try:
             r = cliente.post(cfg.llm_base + "/chat/completions", headers={"Authorization": f"Bearer {cfg.llm_key}"}, json=corpo, timeout=300)
             r.raise_for_status()
             bruto = _json_da_resposta(r.json()["choices"][0]["message"]["content"])
-            cortes = validar_cortes(bruto.get("cortes") or [], segs, dur)
+            cortes = validar_cortes(bruto.get("cortes") or [], segs, dur, trocas)
             if cortes:
                 return {"resumo": str(bruto.get("resumo") or "")[:300], "cortes": cortes[:n]}
         except Exception as e:  # noqa: BLE001
@@ -180,14 +181,18 @@ def _ajustar_a_frases(ini: float, fim: float, segs: list[dict]) -> tuple[float, 
     return comeco, final
 
 
-def validar_cortes(cortes: list, segs: list[dict], dur: float) -> list[dict]:
+def validar_cortes(cortes: list, segs: list[dict], dur: float, trocas: list[float] | None = None) -> list[dict]:
     ok = []
     for c in cortes:
         try:
             ini, fim = float(c["inicio"]), float(c["fim"])
         except (KeyError, TypeError, ValueError):
             continue
-        ini, fim = _ajustar_a_frases(max(0.0, ini), min(dur or fim, fim), segs)
+        if trocas:
+            from app.diretor import encaixar
+            ini, fim = encaixar(max(0.0, ini), min(dur or fim, fim), segs, trocas)
+        else:
+            ini, fim = _ajustar_a_frases(max(0.0, ini), min(dur or fim, fim), segs)
         if fim - ini < 12:
             continue
         if fim - ini > 90:
@@ -326,13 +331,38 @@ def cortes_de_link(url: str, pasta: Path, cfg: Config, avisar: Callable[[str, fl
             audio.unlink(missing_ok=True)
             if len(" ".join(s["text"] for s in trans["segments"]).split()) < 25:
                 raise ErroUsuario("Quase não tem fala nesse vídeo. Os cortes virais precisam de alguém falando.")
+            from app import diretor
+            avisar("Encontrando as trocas de cena", 0.38)
+            trocas = diretor.cenas(info["arquivo"])
             avisar("Procurando os momentos com mais potencial", 0.45)
-            escolha = escolher(trans, cfg, cliente, quantos)
+            escolha = escolher(trans, cfg, cliente, quantos, trocas)
             prontos = []
             palavras = trans.get("words") or []
+            segs = trans["segments"]
+            total = len(escolha["cortes"])
             for k, c in enumerate(escolha["cortes"], 1):
-                avisar(f"Editando o corte {k} de {len(escolha['cortes'])}", 0.5 + 0.45 * (k - 1) / max(1, len(escolha["cortes"])))
-                prontos.append(renderizar(info["arquivo"], c, palavras, pasta, k))
+                base = 0.5 + 0.45 * (k - 1) / max(1, total)
+                avisar(f"Editando o corte {k} de {total}", base)
+                feito = renderizar(info["arquivo"], c, palavras, pasta, k)
+                if cfg.validar:
+                    avisar(f"Conferindo o corte {k} de {total}", base + 0.15 / max(1, total))
+                    v = diretor.validar(pasta / feito["arquivo"], c, diretor.fala_do_trecho(segs, c["inicio"], c["fim"]), cfg, cliente)
+                    # refaz quando reprovou, ou passou raspando (nota < 85) com ajuste sugerido; no máximo 1 vez
+                    if v and (not v["ok"] or v["nota"] < 85) and (v["ajuste_inicio"] or v["ajuste_fim"] or v["gancho_novo"]):
+                        novo = dict(c)
+                        ini2, fim2 = diretor.encaixar(c["inicio"] + v["ajuste_inicio"], c["fim"] + v["ajuste_fim"], segs, trocas)
+                        if 12 <= fim2 - ini2 <= 90:
+                            novo["inicio"], novo["fim"] = ini2, fim2
+                        if v["gancho_novo"]:
+                            novo["gancho"] = v["gancho_novo"]
+                        avisar(f"Refazendo o corte {k} de {total}", base + 0.25 / max(1, total))
+                        feito = renderizar(info["arquivo"], novo, palavras, pasta, k)
+                        v2 = diretor.validar(pasta / feito["arquivo"], novo, diretor.fala_do_trecho(segs, novo["inicio"], novo["fim"]), cfg, cliente)
+                        v = v2 or v
+                        v["refeito"] = True
+                    if v:
+                        feito["validacao"] = v
+                prontos.append(feito)
         finally:
             for p in pasta.glob("origem.*"):
                 p.unlink(missing_ok=True)

@@ -87,6 +87,24 @@ def imagem(prompt: str, estilo: str, destino: Path, cfg: Config) -> None:
     raise RuntimeError(f"imagem: {ultimo}")
 
 
+def conferir_imagem(png: Path, fala: str, cfg: Config) -> dict | None:
+    """O modelo de visão olha a imagem: defeito de anatomia, texto escrito sem querer, combina com a fala? None = não deu para conferir."""
+    import base64
+    try:
+        b64 = base64.b64encode(png.read_bytes()).decode()
+        corpo = {"model": cfg.llm_visao, "max_tokens": 200, "temperature": 0.1, "messages": [{"role": "user", "content": [
+            {"type": "text", "text": "Esta imagem ilustra a fala: \"" + fala[:400] + "\". Ela tem defeito visível (mãos/rosto deformados, texto ou letras "
+             "escritas, marca d'água, objeto quebrado) ou não combina com a fala? Responda SÓ JSON {\"ok\": true/false, \"motivo\": \"...\"}"},
+            {"type": "image_url", "image_url": {"url": "data:image/png;base64," + b64}}]}]}
+        r = httpx.post(cfg.llm_base + "/chat/completions", headers={"Authorization": f"Bearer {cfg.llm_key}"}, json=corpo, timeout=90)
+        r.raise_for_status()
+        j = _json_da_resposta(r.json()["choices"][0]["message"]["content"])
+        return {"ok": bool(j.get("ok")), "motivo": str(j.get("motivo") or "")[:200]}
+    except Exception as e:  # noqa: BLE001
+        log.warning("conferência da imagem falhou: %s", e)
+        return None
+
+
 def legenda_cena(palavras: list[dict], destaque: str, dur: float) -> str:
     cab = f"""[Script Info]
 ScriptType: v4.00+
@@ -155,9 +173,17 @@ def animacao_de_texto(pedido: str, pasta: Path, cfg: Config, avisar: Callable[[s
     avisar("Desenhando as cenas", 0.25)
     feitas = [0]
 
+    refeitas = [0]
+
     def _img(i_c):
         i, c = i_c
-        imagem(str(c["imagem"]), estilo, pasta / f"cena{i}.png", cfg)
+        destino = pasta / f"cena{i}.png"
+        imagem(str(c["imagem"]), estilo, destino, cfg)
+        if cfg.validar:
+            v = conferir_imagem(destino, str(c["fala"]), cfg)
+            if v and not v["ok"]:  # reprovada: gera de novo, uma vez, com o motivo como correção
+                refeitas[0] += 1
+                imagem(f"{c['imagem']}. Avoid: {v['motivo']}", estilo, destino, cfg)
         feitas[0] += 1
         avisar(f"Desenhando as cenas ({feitas[0]} de {len(cenas)})", 0.25 + 0.45 * feitas[0] / len(cenas))
     with ThreadPoolExecutor(3) as ex:
@@ -182,7 +208,7 @@ def animacao_de_texto(pedido: str, pasta: Path, cfg: Config, avisar: Callable[[s
     tags = rt.get("hashtags") or []
     avisar("Pronto", 1.0)
     return {"video": {"titulo": str(rt.get("titulo") or pedido[:60]), "canal": "", "duracao": dur, "url": None, "plataforma": "animacao"},
-            "resumo": f"Animação narrada em {len(cenas)} cenas, estilo {estilo}.",
+            "resumo": f"Animação narrada em {len(cenas)} cenas, estilo {estilo}." + (f" A IA conferiu as imagens e refez {refeitas[0]}." if refeitas[0] else " A IA conferiu todas as imagens."),
             "roteiro": [{"fala": c["fala"], "destaque": c.get("destaque", "")} for c in cenas],
             "cortes": [{"inicio": 0, "fim": round(dur, 2), "duracao": round(dur, 1), "titulo": str(rt.get("titulo") or "Animação"), "gancho": str(cenas[0].get("destaque") or ""),
                         "motivo": "Roteiro com gancho na 1ª cena, narração natural e legenda palavra a palavra.", "nota": 85,

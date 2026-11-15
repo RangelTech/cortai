@@ -58,3 +58,5 @@
 .faixa.potencial{background:linear-gradient(90deg,rgba(61,220,151,.14),rgba(61,220,151,.04));border-color:rgba(61,220,151,.35)}
 .faixa.potencial b{color:var(--ok)}
 @media (max-width:640px){.mini-planos{grid-template-columns:1fr}}
+.corte .bloco.conferido{border:1px solid rgba(61,220,151,.3)}
+.corte .bloco.conferido strong{color:var(--ok)}

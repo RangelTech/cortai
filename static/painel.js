@@ -45,6 +45,7 @@
       <div class="info">
         <div class="top"><span class="nota ${nota}" title="Potencial viral">${c.nota}</span><div><div class="tt">${esc(c.titulo)}</div><div class="mut">Corte ${k} · ${mmss(c.duracao || c.fim - c.inicio)} · do minuto ${mmss(c.inicio)}</div></div></div>
         ${c.motivo ? `<div class="bloco"><strong>Por que pode viralizar</strong>${esc(c.motivo)}</div>` : ''}
+        ${c.validacao ? `<div class="bloco conferido"><strong>Conferido pela IA${c.validacao.refeito ? ' (ajustado)' : ''}: nota ${c.validacao.nota}</strong>${c.validacao.problemas?.length ? esc(c.validacao.problemas[0]) : 'Enquadramento, legenda e início e fim conferidos.'}</div>` : ''}
         ${c.legenda ? `<div class="bloco"><strong>Legenda</strong><span>${esc(c.legenda)}</span><button class="copiar" data-copiar="${esc(c.legenda + (tags ? '\n\n' + tags : ''))}">Copiar</button></div>` : ''}
         ${tags ? `<div class="bloco"><strong>Hashtags</strong>${esc(tags)}</div>` : ''}
       </div>
