@@ -45,7 +45,9 @@ def roteiro(pedido: str, segundos: int, cfg: Config, cliente: httpx.Client, esti
     corpo = {"model": cfg.llm_modelo, "temperature": 0.8, "max_tokens": 2500, "chat_template_kwargs": {"enable_thinking": False},
              "messages": [{"role": "user", "content": PROMPT.format(pedido=pedido, segundos=segundos, palavras=int(segundos * 2.4), cenas=cenas, repertorio=REPERTORIO,
                                                                             estilo_fixo=f" O estilo visual é obrigatório: {estilo_fixo}." if estilo_fixo else "")}]}
-    for _ in range(2):
+    # diretor (GPT via rt-planejar) escreve o roteiro detalhado; se falhar, o modelo da casa (Qwen) escreve
+    for modelo in [cfg.llm_planejador, cfg.llm_modelo] if cfg.llm_planejador else [cfg.llm_modelo, cfg.llm_modelo]:
+        corpo["model"] = modelo
         try:
             r = cliente.post(cfg.llm_base + "/chat/completions", headers={"Authorization": f"Bearer {cfg.llm_key}"}, json=corpo, timeout=180)
             r.raise_for_status()
@@ -55,7 +57,7 @@ def roteiro(pedido: str, segundos: int, cfg: Config, cliente: httpx.Client, esti
                 j["cenas"] = ok[:8]
                 return j
         except Exception as e:  # noqa: BLE001
-            log.warning("roteiro falhou: %s", e)
+            log.warning("roteiro (%s) falhou: %s", modelo, e)
     raise RuntimeError("roteiro: a IA não devolveu cenas válidas")
 
 

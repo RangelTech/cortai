@@ -60,12 +60,15 @@ def clonar_reels(url: str, tema: str, pasta: Path, cfg: Config, avisar: Callable
         corpo = {"model": cfg.llm_modelo, "temperature": 0.4, "max_tokens": 1200, "chat_template_kwargs": {"enable_thinking": False},
                  "messages": [{"role": "user", "content": ANALISE.format(dur=dur, cenas=len(cenas), ritmo=ritmo, texto=texto)}]}
         formula = {}
-        try:
-            r = cliente.post(cfg.llm_base + "/chat/completions", headers={"Authorization": f"Bearer {cfg.llm_key}"}, json=corpo, timeout=180)
-            r.raise_for_status()
-            formula = _json_da_resposta(r.json()["choices"][0]["message"]["content"])
-        except Exception:  # noqa: BLE001
-            formula = {}
+        for modelo in dict.fromkeys([cfg.llm_planejador or cfg.llm_modelo, cfg.llm_modelo]):  # diretor GPT analisa a fórmula; Qwen se falhar
+            corpo["model"] = modelo
+            try:
+                r = cliente.post(cfg.llm_base + "/chat/completions", headers={"Authorization": f"Bearer {cfg.llm_key}"}, json=corpo, timeout=180)
+                r.raise_for_status()
+                formula = _json_da_resposta(r.json()["choices"][0]["message"]["content"])
+                break
+            except Exception:  # noqa: BLE001
+                formula = {}
     segundos = int(max(15, min(60, round(dur))))
     pedido = (f"{tema}\n\nCOPIE A FÓRMULA deste vídeo de referência (formato, não o conteúdo): gancho = {formula.get('gancho', 'frase forte de curiosidade')}; "
               f"estrutura = {' → '.join(formula.get('estrutura', [])) or 'gancho, desenvolvimento rápido, virada, chamada'}; tom = {formula.get('tom', 'animado e direto')}; "
