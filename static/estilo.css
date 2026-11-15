@@ -128,3 +128,24 @@ input[type=range]::-moz-range-thumb{width:24px;height:24px;border-radius:50%;bac
 .preco .lista-ok{margin:16px 0 24px;flex:1}
 .selo-top{position:absolute;top:-12px;left:32px;background:var(--ac);color:#fff;font:700 12px system-ui;padding:6px 12px;border-radius:99px}
 @media (max-width:900px){.calc,.precos{grid-template-columns:1fr}}
+
+/* carrossel de exemplos (hero) */
+.carrossel{position:relative;height:500px;perspective:1100px;user-select:none}
+.trilho{position:absolute;inset:0;transform-style:preserve-3d}
+.cel-c{position:absolute;left:50%;top:50%;width:230px;aspect-ratio:9/16;margin:-204px 0 0 -115px;border-radius:30px;overflow:hidden;border:7px solid #23232e;background:#121219;
+  box-shadow:0 30px 60px rgba(0,0,0,.55);transition:transform .6s cubic-bezier(.2,.8,.2,1),opacity .6s;cursor:pointer}
+.cel-c .img{position:absolute;inset:0;background-size:cover;background-position:center}
+.cel-c.centro{box-shadow:0 30px 70px rgba(255,61,110,.28),0 0 0 2px rgba(255,61,110,.5)}
+.cel-c.centro .img{animation:kb 6s ease-in-out infinite alternate}
+@keyframes kb{to{transform:scale(1.08)}}
+.cel-c .g{position:absolute;top:13%;left:8%;right:8%;background:var(--ac);color:#fff;font:800 14px/1.15 "Display",sans-serif;text-align:center;padding:8px 6px;border-radius:7px;box-shadow:0 4px 14px rgba(0,0,0,.35)}
+.cel-c .l{position:absolute;bottom:22%;left:6%;right:6%;text-align:center;font:800 18px/1.15 "Display",sans-serif;color:#fff;text-shadow:0 2px 0 #000,0 0 10px #000}
+.cel-c .l b{color:#ffe14d}
+.cel-c .rede{position:absolute;top:10px;left:12px;font:700 10px system-ui;letter-spacing:.06em;text-transform:uppercase;background:rgba(0,0,0,.55);color:#fff;padding:4px 8px;border-radius:99px;backdrop-filter:blur(4px)}
+.cel-c .ui{position:absolute;right:10px;bottom:24%;display:grid;gap:14px;color:#fff;filter:drop-shadow(0 1px 2px #000)}
+.cel-c .ui svg{width:22px;height:22px}
+.pontos-c{position:absolute;bottom:-8px;left:0;right:0;display:flex;justify-content:center;gap:6px}
+.pontos-c i{width:6px;height:6px;border-radius:99px;background:#3a3a48;cursor:pointer;transition:width .3s,background .3s}
+.pontos-c i.on{width:20px;background:var(--ac)}
+@media (max-width:900px){.carrossel{height:420px;order:-1}.cel-c{width:190px;margin:-169px 0 0 -95px}}
+@media (prefers-reduced-motion:reduce){.cel-c{transition:none}.cel-c.centro .img{animation:none}}
