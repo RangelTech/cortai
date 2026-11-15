@@ -100,11 +100,11 @@ def extrair_audio(arq: str, pasta: Path) -> Path:
     return out
 
 
-PEDACO_S = 8 * 60  # o llm-queue espera no máximo 120 s pelo Whisper; 8 min de áudio transcreve bem abaixo disso
+PEDACO_S = 4 * 60  # o llm-queue espera no máximo 120 s pelo Whisper; 8 min já estourou, 4 min fica com folga
 
 
 def transcrever(audio: Path, cfg: Config, cliente: httpx.Client) -> dict:
-    """Áudio longo (live de horas) vai em pedaços de 8 min; os tempos de cada pedaço são somados ao deslocamento."""
+    """Áudio longo (live de horas) vai em pedaços de 4 min; os tempos de cada pedaço são somados ao deslocamento."""
     dur = duracao(audio)
     if dur <= PEDACO_S + 120:
         return _transcrever_um(audio, cfg, cliente)
