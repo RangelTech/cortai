@@ -380,6 +380,22 @@ def criar_app(cfg: Config | None = None, iniciar_fila: bool = True) -> FastAPI:
         if not cfg.admin_key or not hmac.compare_digest(chave, cfg.admin_key):
             raise HTTPException(401, "chave de admin")
 
+    @app.post("/api/admin/cortesia")
+    async def admin_cortesia(request: Request):
+        """Libera o Cortaí para um e-mail por N dias (ponte com outros produtos: Perfilaí Turbo inclui o Cortaí Pro)."""
+        exigir_admin(request)
+        b = await request.json()
+        email = auth.normalizar_email(b.get("email"))
+        plano = b.get("plano") if b.get("plano") in PLANOS else "pro"
+        dias = max(0, min(400, int(32 if b.get("dias") is None else b.get("dias"))))
+        if not email:
+            raise HTTPException(422, "e-mail inválido")
+        u = auth.usuario_por_email(db, email)
+        ate = agora() + dias * 86400 if dias else agora()
+        db.exec("UPDATE usuarios SET plano=?, ativo_ate=MAX(ativo_ate, ?) WHERE id=?" if dias else "UPDATE usuarios SET ativo_ate=? WHERE id=?",
+                (plano, ate, u["id"]) if dias else (ate, u["id"]))
+        return {"ok": True, "email": email, "plano": plano, "ativo_ate": db.um("SELECT ativo_ate FROM usuarios WHERE id=?", (u["id"],))["ativo_ate"]}
+
     @app.get("/api/admin/resumo")
     def admin_resumo(request: Request):
         exigir_admin(request)

@@ -344,3 +344,15 @@ def test_compilado_horizontal(tmp_path):
     nome = pipeline.compilado_horizontal(str(o), [(20, 25), (2, 8)], tmp_path / "melhores_momentos.mp4")
     f = tmp_path / nome
     assert f.exists() and abs(pipeline.duracao(f) - 11) < 0.6 and pipeline.tamanho_video(f) == (1280, 720)
+
+
+def test_cortesia_admin(tmp_path):
+    cfg = Config(dados=str(tmp_path), dev=True, segredo_sessao="s", admin_key="adm")
+    c = TestClient(criar_app(cfg, iniciar_fila=False))
+    assert c.post("/api/admin/cortesia", json={"email": "z@x.com"}).status_code == 401
+    r = c.post("/api/admin/cortesia", json={"email": "z@x.com", "plano": "pro", "dias": 32}, headers={"x-admin-key": "adm"}).json()
+    assert r["plano"] == "pro" and r["ativo_ate"] > 0
+    entrar(c, "z@x.com", perfil=False)
+    assert c.get("/api/conta").json()["assinante"] is True
+    c.post("/api/admin/cortesia", json={"email": "z@x.com", "dias": 0}, headers={"x-admin-key": "adm"})
+    assert c.get("/api/conta").json()["assinante"] is False
