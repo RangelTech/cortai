@@ -38,6 +38,9 @@ def criar_app(cfg: Config | None = None, iniciar_fila: bool = True) -> FastAPI:
     db = Banco(os.path.join(cfg.dados, "cortai.db"))
     app = FastAPI(title="Cortaí", docs_url=None, redoc_url=None, openapi_url=None)
     app.state.cfg, app.state.db = cfg, db
+    if cfg.demo_email:  # conta de demonstração: sempre com o plano Turbo ativo
+        u = auth.usuario_por_email(db, cfg.demo_email.lower())
+        db.exec("UPDATE usuarios SET plano='turbo', ativo_ate=? WHERE id=?", (agora() + 3650 * 86400, u["id"]))
     if iniciar_fila:
         app.state.parar = fila.iniciar(db, cfg)
 
@@ -91,6 +94,21 @@ def criar_app(cfg: Config | None = None, iniciar_fila: bool = True) -> FastAPI:
         u = auth.usuario_por_email(db, email)
         token = auth.criar_sessao(db, cfg.segredo_sessao, u["id"])
         resp = JSONResponse({"ok": True, "conta": resumo_conta(u)})
+        resp.set_cookie(COOKIE, token, max_age=auth.SESSAO_S, httponly=True, secure=not cfg.dev, samesite="lax", path="/")
+        return resp
+
+
+    @app.post("/api/entrar/senha")
+    async def entrar_senha(request: Request):
+        """Só a conta de DEMONSTRAÇÃO entra com senha (para apresentar o produto); clientes entram pelo código no e-mail."""
+        b = await request.json()
+        email = auth.normalizar_email(b.get("email"))
+        if not (cfg.demo_email and cfg.demo_senha and email == cfg.demo_email.lower()
+                and hmac.compare_digest(str(b.get("senha") or ""), cfg.demo_senha)):
+            raise HTTPException(400, "e-mail ou senha incorretos (a senha vale só para a conta de demonstração)")
+        u = auth.usuario_por_email(db, email)
+        token = auth.criar_sessao(db, cfg.segredo_sessao, u["id"])
+        resp = JSONResponse({"ok": True})
         resp.set_cookie(COOKIE, token, max_age=auth.SESSAO_S, httponly=True, secure=not cfg.dev, samesite="lax", path="/")
         return resp
 

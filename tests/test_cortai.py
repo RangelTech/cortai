@@ -179,3 +179,14 @@ def test_fila_turbo_passa_na_frente(cli):
     t2 = fila.criar(db, rapido, "cortes", {"url": "https://x/2"})
     assert fila.posicao(db, t2) == 0 and fila.posicao(db, t1) == 1
     assert fila._pegar(db)["id"] == t2
+
+
+def test_senha_so_para_demo(cli):
+    c = cli[0]
+    cfg = c.app.state.cfg
+    cfg.demo_email, cfg.demo_senha = "demo@rangeltech.net", "Demo2026"
+    assert c.post("/api/entrar/senha", json={"email": "demo@rangeltech.net", "senha": "errada"}).status_code == 400
+    assert c.post("/api/entrar/senha", json={"email": "outro@rangeltech.net", "senha": "Demo2026"}).status_code == 400
+    assert c.post("/api/entrar/senha", json={"email": "Demo@RangelTech.net", "senha": "Demo2026"}).status_code == 200
+    cfg.demo_senha = ""
+    assert c.post("/api/entrar/senha", json={"email": "demo@rangeltech.net", "senha": ""}).status_code == 400

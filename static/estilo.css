@@ -149,3 +149,6 @@ input[type=range]::-moz-range-thumb{width:24px;height:24px;border-radius:50%;bac
 .pontos-c i.on{width:20px;background:var(--ac)}
 @media (max-width:900px){.carrossel{height:420px;order:-1}.cel-c{width:190px;margin:-169px 0 0 -95px}}
 @media (prefers-reduced-motion:reduce){.cel-c{transition:none}.cel-c.centro .img{animation:none}}
+
+.link-demo{display:block;margin:12px auto 0;background:none;border:0;color:var(--mut);font-size:13px;text-decoration:underline;cursor:pointer}
+.link-demo:hover{color:var(--fg)}

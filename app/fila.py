@@ -98,7 +98,9 @@ def limpar_antigos(db: Banco, cfg: Config) -> int:
     """Apaga arquivos de trabalhos com mais de N dias (o relatório fica no banco; os vídeos somem)."""
     limite = agora() - cfg.guardar_dias * 86400
     n = 0
-    for t in db.todos("SELECT id FROM trabalhos WHERE fim IS NOT NULL AND fim<? AND (entrada NOT LIKE '%\"apagado\"%')", (limite,)):
+    demo = (cfg.demo_email or "").lower()
+    for t in db.todos("""SELECT t.id FROM trabalhos t JOIN usuarios u ON u.id=t.usuario WHERE t.fim IS NOT NULL AND t.fim<?
+                         AND (t.entrada NOT LIKE '%\"apagado\"%') AND u.email<>?""", (limite, demo)):  # exemplos da demonstração não somem
         pipeline.limpar_pasta(pasta_trabalho(cfg, t["id"]))
         db.exec("UPDATE trabalhos SET entrada=json_set(entrada,'$.apagado',1) WHERE id=?", (t["id"],))
         n += 1

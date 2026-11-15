@@ -36,6 +36,8 @@ class Config:
     planos_por_produto: dict = field(default_factory=dict)  # {"<id do produto Cakto>": plano}
     lancamento_ate: str = "2026-11-30"
     admin_key: str = ""
+    demo_email: str = ""
+    demo_senha: str = ""
 
 
 def carregar() -> Config:
@@ -69,4 +71,6 @@ def carregar() -> Config:
         planos_por_produto=json.loads(e("CORTAI_PLANOS_CAKTO", "") or "{}"),
         lancamento_ate=e("CORTAI_LANCAMENTO_ATE", "2026-11-30"),
         admin_key=e("CORTAI_ADMIN_KEY", ""),
+        demo_email=e("CORTAI_DEMO_EMAIL", ""),
+        demo_senha=e("CORTAI_DEMO_SENHA", ""),
     )
