@@ -72,11 +72,13 @@ def remapear(palavras: list[dict], trechos: list[tuple[float, float]]) -> list[d
 
 
 def cortar_pausas(origem: Path, trechos: list[tuple[float, float]], destino: Path) -> list[tuple[float, float]]:
-    while len(trechos) > 400:  # filtro inline: junta os trechos mais próximos para caber na linha de comando
+    while len(trechos) > 150:  # filtro inline: junta os trechos mais próximos para caber na linha de comando
         k = min(range(len(trechos) - 1), key=lambda i: trechos[i + 1][0] - trechos[i][1])
         trechos = trechos[:k] + [(trechos[k][0], trechos[k + 1][1])] + trechos[k + 2:]
-    sel = "+".join(f"between(t,{a:.3f},{b:.3f})" for a, b in trechos)
-    filtro = f"[0:v]select='{sel}',setpts=N/FRAME_RATE/TB[v];[0:a]aselect='{sel}',asetpts=N/SR/TB[a]"
+    # trim + concat: funciona igual do ffmpeg 5 ao 8 (select/aselect deixava a duração errada no ffmpeg antigo)
+    partes = "".join(f"[0:v]trim={a:.3f}:{b:.3f},setpts=PTS-STARTPTS[v{i}];[0:a]atrim={a:.3f}:{b:.3f},asetpts=PTS-STARTPTS[a{i}];"
+                     for i, (a, b) in enumerate(trechos))
+    filtro = partes + "".join(f"[v{i}][a{i}]" for i in range(len(trechos))) + f"concat=n={len(trechos)}:v=1:a=1[v][a]"
     r = subprocess.run(["ffmpeg", "-y", "-loglevel", "error", "-i", str(origem), "-filter_complex", filtro, "-map", "[v]", "-map", "[a]",
                         "-c:v", "libx264", "-preset", "veryfast", "-crf", "20", "-c:a", "aac", "-b:a", "160k", "-movflags", "+faststart", str(destino)],
                        capture_output=True, text=True)
