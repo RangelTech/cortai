@@ -316,3 +316,20 @@ def test_picos_de_volume(tmp_path):
                     "volume='if(between(t,40,42)+between(t,90,92),1,0.02)':eval=frame", "-ac", "1", "-ar", "16000", "-c:a", "libopus", str(a)], check=True)
     p = pipeline.picos_de_volume(a)
     assert any(39 <= x <= 43 for x in p) and any(89 <= x <= 93 for x in p) and len(p) <= 4
+
+
+def test_transcricao_tenta_de_novo_em_502(tmp_path, monkeypatch):
+    import time
+    from app import pipeline
+    a = tmp_path / "a.ogg"
+    a.write_bytes(b"x" * 100)
+    monkeypatch.setattr(time, "sleep", lambda s: None)
+    respostas = iter([502, 502, 200])
+
+    class R:
+        def __init__(self, st): self.status_code, self.text = st, "erro"
+        def json(self): return {"segments": [{"start": 0, "end": 1, "text": "oi"}]}
+
+    class C:
+        def post(self, *a, **k): return R(next(respostas))
+    assert pipeline._transcrever_um(a, Config(), C())["segments"][0]["text"] == "oi"

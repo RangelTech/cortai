@@ -148,11 +148,25 @@ def picos_de_volume(audio: Path, max_picos: int = 40) -> list[float]:
     return sorted(picos)
 
 
-def _transcrever_um(audio: Path, cfg: Config, cliente: httpx.Client) -> dict:
-    with open(audio, "rb") as f:
-        r = cliente.post(cfg.llm_base + "/audio/transcriptions", headers={"Authorization": f"Bearer {cfg.llm_key}"},
-                         files={"file": ("audio.ogg", f, "audio/ogg")},
-                         data={"language": "pt", "response_format": "verbose_json"}, timeout=900)
+def _transcrever_um(audio: Path, cfg: Config, cliente: httpx.Client, tentativas: int = 4) -> dict:
+    """Erro passageiro (5xx, conexão caída, reinício do gateway) tenta de novo com espera crescente; 4xx não."""
+    import time
+    r = None
+    for k in range(tentativas):
+        try:
+            with open(audio, "rb") as f:
+                r = cliente.post(cfg.llm_base + "/audio/transcriptions", headers={"Authorization": f"Bearer {cfg.llm_key}"},
+                                 files={"file": ("audio.ogg", f, "audio/ogg")},
+                                 data={"language": "pt", "response_format": "verbose_json"}, timeout=1800)
+            if r.status_code < 500:
+                break
+        except httpx.HTTPError as e:
+            log.warning("transcricao: tentativa %s falhou: %s", k + 1, e)
+            r = None
+        if k < tentativas - 1:
+            time.sleep(min(120, 15 * 2 ** k))
+    if r is None:
+        raise RuntimeError("transcricao: sem resposta do servidor")
     if r.status_code != 200:
         raise RuntimeError(f"transcricao {r.status_code}: {r.text[:200]}")
     j = r.json()
