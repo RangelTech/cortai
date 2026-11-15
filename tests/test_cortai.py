@@ -165,3 +165,17 @@ def test_admin_exige_chave_e_resume(cli):
     r = c.get("/api/admin/resumo", headers={"x-admin-key": "adm"})
     assert r.status_code == 200 and "assinantes" in r.json() and len(r.json()["planos"]) == 3
     assert c.get("/api/admin/assinantes", headers={"x-admin-key": "adm"}).status_code == 200
+
+
+def test_fila_turbo_passa_na_frente(cli):
+    from app import fila
+    c, app = cli
+    db = app.state.db
+    assinar(c, "lento@exemplo.com", "prod-start")
+    assinar(c, "rapido@exemplo.com", "prod-turbo")
+    lento = db.um("SELECT id FROM usuarios WHERE email='lento@exemplo.com'")["id"]
+    rapido = db.um("SELECT id FROM usuarios WHERE email='rapido@exemplo.com'")["id"]
+    t1 = fila.criar(db, lento, "cortes", {"url": "https://x/1"})
+    t2 = fila.criar(db, rapido, "cortes", {"url": "https://x/2"})
+    assert fila.posicao(db, t2) == 0 and fila.posicao(db, t1) == 1
+    assert fila._pegar(db)["id"] == t2

@@ -26,15 +26,22 @@ def criar(db: Banco, usuario: int, tipo: str, entrada: dict) -> str:
 
 
 def posicao(db: Banco, tid: str) -> int:
-    t = db.um("SELECT criado FROM trabalhos WHERE id=?", (tid,))
+    t = db.um("""SELECT t.criado, (u.plano='turbo' AND u.ativo_ate>strftime('%s','now')) turbo FROM trabalhos t
+                 LEFT JOIN usuarios u ON u.id=t.usuario WHERE t.id=?""", (tid,))
     if not t:
         return 0
-    return db.um("SELECT COUNT(*) n FROM trabalhos WHERE estado='fila' AND criado<?", (t["criado"],))["n"]
+    if t["turbo"]:
+        return db.um("""SELECT COUNT(*) n FROM trabalhos t JOIN usuarios u ON u.id=t.usuario WHERE t.estado='fila' AND t.criado<?
+                        AND u.plano='turbo' AND u.ativo_ate>strftime('%s','now')""", (t["criado"],))["n"]
+    return db.um("""SELECT COUNT(*) n FROM trabalhos t LEFT JOIN usuarios u ON u.id=t.usuario WHERE t.estado='fila'
+                    AND (t.criado<? OR (u.plano='turbo' AND u.ativo_ate>strftime('%s','now')))""", (t["criado"],))["n"]
 
 
 def _pegar(db: Banco) -> dict | None:
     with db.tx() as c:
-        r = c.execute("SELECT * FROM trabalhos WHERE estado='fila' ORDER BY criado LIMIT 1").fetchone()
+        # fila prioritária do plano Turbo (assinatura ativa): passa na frente; dentro de cada grupo, ordem de chegada
+        r = c.execute("""SELECT t.* FROM trabalhos t LEFT JOIN usuarios u ON u.id=t.usuario WHERE t.estado='fila'
+                         ORDER BY CASE WHEN u.plano='turbo' AND u.ativo_ate>strftime('%s','now') THEN 0 ELSE 1 END, t.criado LIMIT 1""").fetchone()
         if not r:
             return None
         c.execute("UPDATE trabalhos SET estado='rodando', etapa='Começando', progresso=0.01 WHERE id=?", (r["id"],))
