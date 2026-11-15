@@ -474,12 +474,37 @@ def cortes_de_link(url: str, pasta: Path, cfg: Config, avisar: Callable[[str, fl
                     if v:
                         feito["validacao"] = v
                 prontos.append(feito)
+            compilado = None
+            if float(info.get("duracao") or 0) >= 20 * 60 and len(prontos) >= 2:  # live/podcast longo: melhores momentos horizontal p/ YouTube
+                avisar("Montando o vídeo de melhores momentos", 0.97)
+                try:
+                    compilado = compilado_horizontal(info["arquivo"], [(c["inicio"], c["fim"]) for c in prontos], pasta / "melhores_momentos.mp4")
+                except Exception as e:  # noqa: BLE001
+                    log.warning("compilado falhou: %s", e)
         finally:
             for p in pasta.glob("origem.*"):
                 p.unlink(missing_ok=True)
     avisar("Pronto", 1.0)
     return {"video": {k: info[k] for k in ("titulo", "canal", "duracao", "url", "plataforma")}, "resumo": escolha["resumo"],
-            "cortes": prontos, "dicas": DICAS}
+            "cortes": prontos, "dicas": DICAS, **({"compilado": compilado} if compilado else {})}
+
+
+def compilado_horizontal(origem: str, trechos: list[tuple[float, float]], destino: Path) -> str:
+    """Junta os trechos escolhidos (na ordem do vídeo) no formato original 16:9, com fade curto entre eles."""
+    trechos = sorted(trechos)
+    partes, rot = [], []
+    for i, (a, b) in enumerate(trechos):
+        d = b - a
+        partes.append(f"[0:v]trim={a:.2f}:{b:.2f},setpts=PTS-STARTPTS,scale=-2:720,fade=t=in:st=0:d=0.4,fade=t=out:st={max(0, d - 0.4):.2f}:d=0.4[v{i}];"
+                      f"[0:a]atrim={a:.2f}:{b:.2f},asetpts=PTS-STARTPTS,afade=t=in:st=0:d=0.3,afade=t=out:st={max(0, d - 0.3):.2f}:d=0.3[a{i}];")
+        rot.append(f"[v{i}][a{i}]")
+    filtro = "".join(partes) + "".join(rot) + f"concat=n={len(trechos)}:v=1:a=1[v][a]"
+    r = subprocess.run(["ffmpeg", "-y", "-loglevel", "error", "-i", origem, "-filter_complex", filtro, "-map", "[v]", "-map", "[a]", "-c:v", "libx264",
+                        "-preset", "veryfast", "-crf", "22", "-c:a", "aac", "-b:a", "160k", "-movflags", "+faststart", "-threads", "4", str(destino)],
+                       capture_output=True, text=True)
+    if r.returncode != 0:
+        raise RuntimeError("ffmpeg (compilado): " + r.stderr[-300:])
+    return destino.name
 
 
 DICAS = [

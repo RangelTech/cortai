@@ -333,3 +333,14 @@ def test_transcricao_tenta_de_novo_em_502(tmp_path, monkeypatch):
     class C:
         def post(self, *a, **k): return R(next(respostas))
     assert pipeline._transcrever_um(a, Config(), C())["segments"][0]["text"] == "oi"
+
+
+def test_compilado_horizontal(tmp_path):
+    import subprocess
+    from app import pipeline
+    o = tmp_path / "o.mp4"
+    subprocess.run(["ffmpeg", "-y", "-loglevel", "error", "-f", "lavfi", "-i", "color=c=blue:s=1280x720:d=30", "-f", "lavfi", "-i", "sine=f=300:d=30",
+                    "-shortest", "-c:v", "libx264", "-preset", "ultrafast", "-c:a", "aac", str(o)], check=True)
+    nome = pipeline.compilado_horizontal(str(o), [(20, 25), (2, 8)], tmp_path / "melhores_momentos.mp4")
+    f = tmp_path / nome
+    assert f.exists() and abs(pipeline.duracao(f) - 11) < 0.6 and pipeline.tamanho_video(f) == (1280, 720)

@@ -77,6 +77,7 @@
       corpo = `<p class="resumo" style="color:#ff9aa9">${esc(t.erro || 'Algo deu errado.')}</p>`
     } else if (r) {
       corpo = `${r.resumo ? `<p class="resumo">${esc(r.resumo)}</p>` : ''}
+        ${r.compilado_url ? `<div class="compilado"><div><b>Melhores momentos (YouTube)</b><span>Os cortes juntos no formato horizontal, para o vídeo longo do canal.</span></div><a class="btn btn-sec" href="${r.compilado_url}?baixar=1">Baixar</a></div>` : ''}
         <div class="cortes">${(r.cortes || []).map((c, i) => cartaoCorte(t, c, i + 1)).join('')}</div>
         ${r.dicas?.length ? `<div class="dicas"><b>Dicas para postar</b><ul>${r.dicas.map((d) => `<li>${esc(d)}</li>`).join('')}</ul></div>` : ''}`
     }

@@ -144,6 +144,8 @@ def criar_app(cfg: Config | None = None, iniciar_fila: bool = True) -> FastAPI:
                 c["editavel"] = bool(c.get("limpo")) and not apagado
                 c.pop("palavras", None)
                 c["capa_url"] = None if apagado or not c.get("capa") else f"/api/trabalhos/{t['id']}/arquivo/{c['capa']}"
+            if res.get("compilado"):
+                res["compilado_url"] = None if apagado else f"/api/trabalhos/{t['id']}/arquivo/{res['compilado']}"
         return {"id": t["id"], "tipo": t["tipo"], "estado": t["estado"], "etapa": t["etapa"], "progresso": t["progresso"],
                 "entrada": {"url": entrada.get("url"), "texto": entrada.get("texto")}, "erro": t["erro"], "criado": t["criado"], "fim": t["fim"],
                 "resultado": res, "arquivos_apagados": apagado, "posicao": fila.posicao(db, t["id"]) if t["estado"] == "fila" else 0}
@@ -331,7 +333,7 @@ def criar_app(cfg: Config | None = None, iniciar_fila: bool = True) -> FastAPI:
     @app.get("/api/trabalhos/{tid}/arquivo/{nome}")
     def arquivo(tid: str, nome: str, request: Request, baixar: int = 0):
         u = usuario(request)
-        if not re.fullmatch(r"corte\d+(_ed)?(_(limpo|tiktok|instagram|youtube))?\.(mp4|jpg)", nome) or not db.um("SELECT 1 FROM trabalhos WHERE id=? AND usuario=?", (tid, u["id"])):
+        if not re.fullmatch(r"(corte\d+(_ed)?(_(limpo|tiktok|instagram|youtube))?\.(mp4|jpg)|melhores_momentos\.mp4)", nome) or not db.um("SELECT 1 FROM trabalhos WHERE id=? AND usuario=?", (tid, u["id"])):
             raise HTTPException(404, "não encontrado")
         p = fila.pasta_trabalho(cfg, tid) / nome
         if not p.exists():
