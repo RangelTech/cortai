@@ -31,6 +31,7 @@ class Config:
     workers: int = 1
     guardar_dias: int = 7
     proxy: str = ""                    # proxy para o yt-dlp (opcional)
+    yt_cookies: str = "/data/yt_cookies.txt"  # cookies de uma conta do YouTube (o IP de datacenter cai no "não sou robô" sem eles)
     dev: bool = False
     checkouts: dict = field(default_factory=dict)          # {"start": url, "pro": url, "turbo": url}
     planos_por_produto: dict = field(default_factory=dict)  # {"<id do produto Cakto>": plano}
@@ -66,6 +67,7 @@ def carregar() -> Config:
         workers=int(e("CORTAI_WORKERS", "1")),
         guardar_dias=int(e("CORTAI_GUARDAR_DIAS", "7")),
         proxy=e("CORTAI_PROXY", ""),
+        yt_cookies=e("CORTAI_YT_COOKIES", "/data/yt_cookies.txt"),
         dev=e("CORTAI_DEV", "") == "1",
         checkouts=json.loads(e("CORTAI_CHECKOUTS", "") or "{}"),
         planos_por_produto=json.loads(e("CORTAI_PLANOS_CAKTO", "") or "{}"),

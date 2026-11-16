@@ -49,6 +49,8 @@ def baixar(url: str, pasta: Path, cfg: Config) -> dict:
     }
     if cfg.proxy:
         opcoes["proxy"] = cfg.proxy
+    if cfg.yt_cookies and Path(cfg.yt_cookies).is_file():
+        opcoes["cookiefile"] = cfg.yt_cookies  # sessão de uma conta do YouTube; o yt-dlp renova o arquivo a cada uso
     try:
         with yt_dlp.YoutubeDL({**opcoes, "skip_download": True}) as y:
             info = y.extract_info(url, download=False)
