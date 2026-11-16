@@ -17,6 +17,7 @@ from app import senha_rotas
 from app import auth, fila, mailer
 from app.config import Config, carregar
 from app.db import Banco, agora
+from app import admin  # painel /admin e prompts editáveis
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(name)s %(message)s")
 ESTATICO = Path(__file__).resolve().parent.parent / "static"
@@ -37,6 +38,7 @@ def criar_app(cfg: Config | None = None, iniciar_fila: bool = True) -> FastAPI:
     cfg = cfg or carregar()
     Path(cfg.dados).mkdir(parents=True, exist_ok=True)
     db = Banco(os.path.join(cfg.dados, "cortai.db"))
+    admin.preparar(db)
     app = FastAPI(title="Cortaí", docs_url=None, redoc_url=None, openapi_url=None)
     app.state.cfg, app.state.db = cfg, db
     if cfg.demo_email:  # conta de demonstração: sempre com o plano Turbo ativo
@@ -502,6 +504,13 @@ def criar_app(cfg: Config | None = None, iniciar_fila: bool = True) -> FastAPI:
         if not usuario(request, obrigatorio=False):
             return RedirectResponse("/?entrar=1", status_code=303)
         return FileResponse(ESTATICO / "painel.html")
+
+    app.include_router(admin.rotas(db, cfg.segredo_sessao, """SELECT email, criado, plano, ativo_ate, (ativo_ate > strftime('%s','now')) ativo
+        FROM usuarios ORDER BY criado DESC""", seguro=not cfg.dev))
+
+    @app.get("/admin", response_class=HTMLResponse)
+    def pagina_admin():
+        return FileResponse(ESTATICO / "admin.html")
 
     app.mount("/s", StaticFiles(directory=ESTATICO), name="estatico")
     return app

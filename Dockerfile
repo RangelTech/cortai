@@ -9,6 +9,7 @@ COPY requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
 COPY app ./app
 COPY static ./static
+COPY skills ./skills
 ARG GIT_COMMIT=dev
 ENV GIT_COMMIT=${GIT_COMMIT} PYTHONUNBUFFERED=1 PYTHONDONTWRITEBYTECODE=1 CORTAI_DADOS=/data DENO_DIR=/tmp/deno XDG_CACHE_HOME=/tmp/cache HOME=/tmp
 USER 10001

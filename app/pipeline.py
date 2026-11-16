@@ -20,6 +20,7 @@ import httpx
 
 from app.config import Config
 from app.ganchos import REPERTORIO
+from app import admin  # prompts editáveis no /admin
 
 log = logging.getLogger("cortai.pipeline")
 FONTES = Path(__file__).resolve().parent.parent / "static" / "fonts"
@@ -259,7 +260,7 @@ def _escolher_janela(segs_jan: list[dict], segs: list[dict], dur: float, cfg: Co
         texto += "\n\nMomentos de grito, risada ou reação forte (pico de volume, em segundos): " + ", ".join(f"{p:.0f}" for p in picos) + \
                  ". Em live e gameplay, esses momentos costumam ser os melhores cortes: prefira trechos que contenham um deles."
     corpo = {"model": cfg.llm_modelo, "temperature": 0.4, "max_tokens": 3000, "chat_template_kwargs": {"enable_thinking": False},
-             "messages": [{"role": "user", "content": PROMPT.format(n=n, texto=texto, repertorio=REPERTORIO)}]}
+             "messages": [{"role": "user", "content": admin.formatar("cortai-cortes", PROMPT, n=n, texto=texto, repertorio=REPERTORIO)}]}
     ultimo = None
     for modelo in dict.fromkeys([cfg.llm_planejador, cfg.llm_modelo]):  # planejador (melhor julgamento) e, se falhar, o modelo da casa
         corpo["model"] = modelo

@@ -19,6 +19,7 @@ from app.config import Config
 from app.pipeline import ErroUsuario, W, H, _ass_tempo, _ass_texto, _filtro_ass, _json_da_resposta, duracao
 
 from app.ganchos import REPERTORIO, estilo_prompt
+from app import admin  # prompts editáveis no /admin
 
 log = logging.getLogger("cortai.animacao")
 VOZES = {"feminina": "pt-BR-ThalitaMultilingualNeural", "masculina": "pt-BR-AntonioNeural"}
@@ -43,7 +44,7 @@ Responda SÓ com JSON:
 def roteiro(pedido: str, segundos: int, cfg: Config, cliente: httpx.Client, estilo_fixo: str | None = None) -> dict:
     cenas = max(4, min(8, round(segundos / 5)))
     corpo = {"model": cfg.llm_modelo, "temperature": 0.8, "max_tokens": 2500, "chat_template_kwargs": {"enable_thinking": False},
-             "messages": [{"role": "user", "content": PROMPT.format(pedido=pedido, segundos=segundos, palavras=int(segundos * 2.4), cenas=cenas, repertorio=REPERTORIO,
+             "messages": [{"role": "user", "content": admin.formatar("cortai-animacao", PROMPT, pedido=pedido, segundos=segundos, palavras=int(segundos * 2.4), cenas=cenas, repertorio=REPERTORIO,
                                                                             estilo_fixo=f" O estilo visual é obrigatório: {estilo_fixo}." if estilo_fixo else "")}]}
     # diretor (GPT via rt-planejar) escreve o roteiro detalhado; se falhar, o modelo da casa (Qwen) escreve
     for modelo in [cfg.llm_planejador, cfg.llm_modelo] if cfg.llm_planejador else [cfg.llm_modelo, cfg.llm_modelo]:

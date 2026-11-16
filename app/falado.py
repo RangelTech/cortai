@@ -14,6 +14,7 @@ import httpx
 from app.config import Config
 from app.ganchos import REPERTORIO
 from app.pipeline import ErroUsuario, _json_da_resposta, duracao, extrair_audio, renderizar, transcrever
+from app import admin  # prompts editáveis no /admin
 
 log = logging.getLogger("cortai.falado")
 PAUSA = 0.45        # silêncio entre palavras acima disso sai
@@ -91,7 +92,7 @@ def textos(fala: str, cfg: Config, cliente: httpx.Client) -> dict:
     try:
         r = cliente.post(cfg.llm_base + "/chat/completions", headers={"Authorization": f"Bearer {cfg.llm_key}"}, timeout=120,
                          json={"model": cfg.llm_modelo, "temperature": 0.6, "max_tokens": 700, "chat_template_kwargs": {"enable_thinking": False},
-                               "messages": [{"role": "user", "content": PROMPT.format(fala=fala[:6000], repertorio=REPERTORIO)}]})
+                               "messages": [{"role": "user", "content": admin.formatar("cortai-falado", PROMPT, fala=fala[:6000], repertorio=REPERTORIO)}]})
         r.raise_for_status()
         return _json_da_resposta(r.json()["choices"][0]["message"]["content"])
     except Exception as e:  # noqa: BLE001

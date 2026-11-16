@@ -13,6 +13,7 @@ import httpx
 from app import animacao
 from app.config import Config
 from app.pipeline import ErroUsuario, _json_da_resposta, baixar, duracao, extrair_audio, transcrever
+from app import admin  # prompts editáveis no /admin
 
 
 def cortes_de_cena(arq: str) -> list[float]:
@@ -58,7 +59,7 @@ def clonar_reels(url: str, tema: str, pasta: Path, cfg: Config, avisar: Callable
         ritmo = dur / max(1, len(cenas) + 1)
         texto = "\n".join(f"[{s['start']:.1f}-{s['end']:.1f}] {s['text']}" for s in trans.get("segments", []))[:12000] or "(sem fala: vídeo só com música e texto)"
         corpo = {"model": cfg.llm_modelo, "temperature": 0.4, "max_tokens": 1200, "chat_template_kwargs": {"enable_thinking": False},
-                 "messages": [{"role": "user", "content": ANALISE.format(dur=dur, cenas=len(cenas), ritmo=ritmo, texto=texto)}]}
+                 "messages": [{"role": "user", "content": admin.formatar("cortai-clonar", ANALISE, dur=dur, cenas=len(cenas), ritmo=ritmo, texto=texto)}]}
         formula = {}
         for modelo in dict.fromkeys([cfg.llm_planejador or cfg.llm_modelo, cfg.llm_modelo]):  # diretor GPT analisa a fórmula; Qwen se falhar
             corpo["model"] = modelo

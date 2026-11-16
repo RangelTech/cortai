@@ -17,6 +17,7 @@ from pathlib import Path
 import httpx
 
 from app.config import Config
+from app import admin  # prompts editáveis no /admin
 
 log = logging.getLogger("cortai.diretor")
 JANELA_CENA = 1.5
@@ -80,7 +81,7 @@ def validar(video: Path, corte: dict, fala: str, cfg: Config, cliente: httpx.Cli
     try:
         b64 = base64.b64encode(m.read_bytes()).decode()
         corpo = {"model": cfg.llm_visao, "max_tokens": 500, "temperature": 0.2, "messages": [{"role": "user", "content": [
-            {"type": "text", "text": PROMPT_VALIDA.format(titulo=corte.get("titulo", ""), gancho=corte.get("gancho", ""), fala=fala[:1500])},
+            {"type": "text", "text": admin.formatar("cortai-diretor", PROMPT_VALIDA, titulo=corte.get("titulo", ""), gancho=corte.get("gancho", ""), fala=fala[:1500])},
             {"type": "image_url", "image_url": {"url": f"data:image/jpeg;base64,{b64}"}}]}]}
         r = cliente.post(cfg.llm_base + "/chat/completions", headers={"Authorization": f"Bearer {cfg.llm_key}"}, json=corpo, timeout=120)
         r.raise_for_status()
