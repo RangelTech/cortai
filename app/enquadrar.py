@@ -13,9 +13,49 @@ import statistics
 log = logging.getLogger("cortai.enquadrar")
 
 
-def _detector():
-    import cv2
-    return cv2.CascadeClassifier(cv2.data.haarcascades + "haarcascade_frontalface_default.xml")
+YUNET = __import__("pathlib").Path(__file__).parent / "modelos" / "face_detection_yunet_2023mar.onnx"  # OpenCV Zoo, MIT
+
+
+class _Detector:
+    """YuNet (rede neural do OpenCV, pega rosto de lado, com chapéu e óculos) e, se não houver, Haar de frente + perfil.
+    16/11/2026: só o Haar de frente perdia o rosto de quem estava de chapéu/perfil e o recorte saía na borda."""
+
+    def __init__(self):
+        import cv2
+        self.cv2 = cv2
+        self.yunet = None
+        if YUNET.exists() and hasattr(cv2, "FaceDetectorYN"):
+            try:
+                self.yunet = cv2.FaceDetectorYN.create(str(YUNET), "", (320, 320), 0.6, 0.3, 50)
+            except Exception as e:  # noqa: BLE001
+                log.warning("YuNet indisponivel (%s): uso Haar", e)
+        base = cv2.data.haarcascades
+        self.frente = cv2.CascadeClassifier(base + "haarcascade_frontalface_default.xml")
+        self.perfil = cv2.CascadeClassifier(base + "haarcascade_profileface.xml")
+
+    def maior(self, img) -> tuple[float, float, float, float] | None:
+        """Maior rosto do quadro (x, y, largura, altura em pixels) ou None."""
+        cv2 = self.cv2
+        h, w = img.shape[:2]
+        if self.yunet is not None:
+            self.yunet.setInputSize((w, h))
+            _, faces = self.yunet.detect(img)
+            if faces is not None and len(faces):
+                f = max(faces, key=lambda r: r[2] * r[3])
+                return float(f[0]), float(f[1]), float(f[2]), float(f[3])
+        cinza = cv2.equalizeHist(cv2.cvtColor(img, cv2.COLOR_BGR2GRAY))
+        achados = list(self.frente.detectMultiScale(cinza, scaleFactor=1.15, minNeighbors=6, minSize=(28, 28)))
+        achados += list(self.perfil.detectMultiScale(cinza, scaleFactor=1.15, minNeighbors=5, minSize=(28, 28)))
+        espelho = cv2.flip(cinza, 1)  # o Haar de perfil só vê um lado
+        achados += [(w - x - rw, y, rw, rh) for x, y, rw, rh in self.perfil.detectMultiScale(espelho, scaleFactor=1.15, minNeighbors=5, minSize=(28, 28))]
+        if not achados:
+            return None
+        x, y, rw, rh = max(achados, key=lambda q: q[2] * q[3])
+        return float(x), float(y), float(rw), float(rh)
+
+
+def _detector() -> _Detector:
+    return _Detector()
 
 
 def posicoes(origem: str, ini: float, fim: float, trocas: list[float], largura_saida_rel: float) -> list[tuple[float, float]] | None:
@@ -43,12 +83,8 @@ def posicoes(origem: str, ini: float, fim: float, trocas: list[float], largura_s
             img = cv2.imread(str(f))
             if img is None:
                 continue
-            cinza = cv2.equalizeHist(cv2.cvtColor(img, cv2.COLOR_BGR2GRAY))
-            rostos = det.detectMultiScale(cinza, scaleFactor=1.15, minNeighbors=6, minSize=(28, 28))
-            cx = None
-            if len(rostos):
-                x, y, rw, rh = max(rostos, key=lambda q: q[2] * q[3])
-                cx = (x + rw / 2) / img.shape[1]
+            rosto = det.maior(img)
+            cx = (rosto[0] + rosto[2] / 2) / img.shape[1] if rosto else None
             achados.append((ini + i * 0.5 + 0.25, cx))
     for a, b in zip(cenas, cenas[1:]):
         xs = [cx for t, cx in achados if a <= t < b and cx is not None]
