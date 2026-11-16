@@ -7,6 +7,23 @@
 <meta name="description" content="Cole o link de um vídeo do YouTube ou Instagram e receba cortes virais prontos para Reels, TikTok e Shorts, com legenda, gancho e relatório.">
 <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'><rect width='64' height='64' rx='14' fill='%23ff3d6e'/><path d='M22 18l24 14-24 14z' fill='white'/></svg>">
 <link rel="stylesheet" href="/s/estilo.css">
+<style>
+/* cinema (16/11): foto atrás do topo e faixas de foto em tela cheia */
+html,body{overflow-x:clip}
+.cine{position:relative;isolation:isolate}
+.cine-fundo{position:absolute;top:0;bottom:0;left:50%;width:100vw;transform:translateX(-50%);z-index:-1;background-size:cover;background-position:center;opacity:.68;animation:cineZoom 18s ease-out both}
+.cine-fundo:after{content:"";position:absolute;inset:0;background:linear-gradient(90deg,rgba(0,0,0,.9) 0%,rgba(0,0,0,.6) 42%,rgba(0,0,0,.12) 100%),linear-gradient(0deg,var(--bg,#050505) 0%,transparent 35%)}
+@keyframes cineZoom{from{transform:translateX(-50%) scale(1.08)}to{transform:translateX(-50%) scale(1)}}
+.cine-faixa{position:relative;min-height:78vh;display:grid;align-items:center;overflow:hidden;isolation:isolate}
+.cine-faixa>img{position:absolute;inset:0;width:100%;height:100%;object-fit:cover;z-index:-2;transform:scale(1.04);transition:transform 6s ease}
+.cine-faixa:hover>img{transform:scale(1)}
+.cine-faixa:after{content:"";position:absolute;inset:0;z-index:-1;background:linear-gradient(90deg,rgba(0,0,0,.88),rgba(0,0,0,.55) 55%,rgba(0,0,0,.15))}
+.cine-faixa .cine-txt{max-width:640px;padding:96px 0}
+.cine-faixa .cine-etq{display:inline-block;font-size:13px;letter-spacing:.14em;text-transform:uppercase;font-weight:700;color:var(--ac,#fff);margin-bottom:14px}
+.cine-faixa h2{font-size:clamp(40px,5.6vw,76px);line-height:1;letter-spacing:-.02em;margin-bottom:18px;color:#fff}
+.cine-faixa p{font-size:19px;color:#e2e2e8;margin-bottom:28px;max-width:560px}
+@media (max-width:760px){.cine-fundo{opacity:.45}.cine-faixa{min-height:70vh}.cine-faixa:after{background:linear-gradient(0deg,rgba(0,0,0,.92) 35%,rgba(0,0,0,.45))}}
+</style>
 </head>
 <body>
 <header class="topo"><div class="wrap">
@@ -15,7 +32,7 @@
 </div></header>
 
 <main>
-<section class="hero"><div class="wrap">
+<section class="hero cine"><div class="cine-fundo" style="background-image:url(/s/img/heroi.webp)"></div><div class="wrap">
   <div>
     <span class="selo"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M8.5 14.5A2.5 2.5 0 0 0 11 12c0-1.38-.5-2-1-3-1.07-2.14-.22-4.05 2-6 .5 2.5 2 4.9 4 6.5 2 1.6 3 3.5 3 5.5a7 7 0 1 1-14 0c0-1.15.43-2.29 1-3a2.5 2.5 0 0 0 2.5 2.5z"/></svg> Renda extra com cortes</span>
     <h1>Cole um link.<br>Receba <em>cortes virais</em> prontos.</h1>
@@ -66,6 +83,10 @@
     <div class="lin"><strong>Hashtags</strong>#empreendedorismo #dinheiro #historiareal</div>
   </div>
 </div></section>
+
+<section class="cine-faixa"><img src="/s/img/faixa.webp" alt="" loading="lazy"><div class="wrap"><div class="cine-txt rev">
+  <span class="cine-etq">Um vídeo longo, dez chances</span><h2>O corte que viraliza<br>já está no seu vídeo.</h2><p>O Cortaí assiste por você, acha os momentos com mais chance de prender e entrega cada corte com legenda, gancho e relatório.</p><button class="btn btn-pri" data-entrar="codigo">Quero meus cortes</button>
+</div></div></section>
 
 <section id="ganhos"><div class="wrap calc">
   <div>
