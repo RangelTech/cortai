@@ -14,6 +14,7 @@ from fastapi.responses import FileResponse, HTMLResponse, JSONResponse, Redirect
 from fastapi.staticfiles import StaticFiles
 
 from app import senha_rotas
+from produtos_core import acesso
 from app import auth, fila, mailer
 from app.config import Config, carregar
 from app.db import Banco, agora
@@ -74,45 +75,16 @@ def criar_app(cfg: Config | None = None, iniciar_fila: bool = True) -> FastAPI:
         return {"ok": True}
 
     # ------------------------------------------------ login
-    @app.post("/api/entrar/codigo")
-    async def pedir_codigo(request: Request):
-        b = await request.json()
-        email = auth.normalizar_email(b.get("email"))
-        if not email:
-            raise HTTPException(422, "e-mail inválido")
-        cod, motivo = auth.novo_codigo(db, cfg.segredo_sessao, email)
-        if motivo == "espere":
-            raise HTTPException(429, "acabamos de mandar um código; espere alguns segundos")
-        enviado = mailer.codigo(cfg, email, cod)
-        out = {"ok": True, "enviado": enviado}
-        if cfg.dev:
-            out["codigo_dev"] = cod
-        return out
-
-    @app.post("/api/entrar")
-    async def entrar(request: Request):
-        b = await request.json()
-        email = auth.normalizar_email(b.get("email"))
-        if not email:
-            raise HTTPException(422, "e-mail inválido")
-        r = auth.conferir_codigo(db, cfg.segredo_sessao, email, str(b.get("codigo") or ""))
-        if r != "ok":
-            raise HTTPException(400, {"invalido": "código errado", "expirado": "código vencido; peça outro",
-                                      "tentativas": "muitas tentativas; peça outro código"}[r])
-        u = auth.usuario_por_email(db, email)
-        token = auth.criar_sessao(db, cfg.segredo_sessao, u["id"])
-        resp = JSONResponse({"ok": True, "conta": resumo_conta(u)})
-        resp.set_cookie(COOKIE, token, max_age=auth.SESSAO_S, httponly=True, secure=not cfg.dev, samesite="lax", path="/")
-        return resp
-
-
     def _login(u: dict) -> JSONResponse:
         token = auth.criar_sessao(db, cfg.segredo_sessao, u["id"])
         resp = JSONResponse({"ok": True})
         resp.set_cookie(COOKIE, token, max_age=auth.SESSAO_S, httponly=True, secure=not cfg.dev, samesite="lax", path="/")
         return resp
 
-    senha_rotas.registrar(app, db, cfg, mailer, _login, usuario)  # senha (padrão), código (opção), esqueci a senha
+    acesso.registrar(app, db, enviar=lambda para, assunto, texto, html: mailer.enviar(cfg, para, assunto, texto, html),
+                     login=_login, usuario=usuario, criar_usuario=lambda email: auth.usuario_por_email(db, email),
+                     produto="Cortaí", base_url=cfg.base_url, destino="/painel", cor="#ff3d6e",
+                     demo_email=lambda: cfg.demo_email, demo_senha=lambda: cfg.demo_senha, dev=cfg.dev)  # cadastro e login comuns (spec 57 §5A)
 
     @app.post("/api/sair")
     def sair(request: Request):
