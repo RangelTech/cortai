@@ -1,0 +1,35 @@
+{
+  "_doc": "Contrato de planos do produto (spec 57 §3, item 4). Quem muda preço muda AQUI, no código e na oferta da Cakto; o teste tests/test_planos_contrato.py falha se o código e este arquivo divergirem. Mapa produto da Cakto -> plano e links de checkout ficam no Infisical (nunca no git).",
+  "produto": "cortai",
+  "moeda": "BRL",
+  "periodo": "mensal",
+  "planos": [
+    {
+      "codigo": "start",
+      "nome": "Start",
+      "preco": 19.9
+    },
+    {
+      "codigo": "pro",
+      "nome": "Pro",
+      "preco": 29.9
+    },
+    {
+      "codigo": "turbo",
+      "nome": "Turbo",
+      "preco": 59.9
+    }
+  ],
+  "cakto": {
+    "conta": "lucas",
+    "infisical": "rt-produtos/cortai",
+    "mapa": "CORTAI_PLANOS_CAKTO",
+    "checkouts": "CORTAI_CHECKOUTS",
+    "webhook": "POST /api/cakto (segredo em CORTAI_CAKTO_SEGREDO)",
+    "codigos_vendidos": [
+      "pro",
+      "start",
+      "turbo"
+    ]
+  }
+}
