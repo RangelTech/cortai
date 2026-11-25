@@ -78,16 +78,17 @@ def test_trabalho_de_outro_usuario_invisivel(cli):
 
 def test_cakto_libera_e_revoga(cli):
     c, _ = cli
-    corpo = {"secret": "segredo-cakto", "event": "purchase_approved", "data": {"id": "p1", "customer": {"email": "Ana@Exemplo.com"}}}
+    fora = {"secret": "segredo-cakto", "event": "purchase_approved", "data": {"id": "p0", "customer": {"email": "Ana@Exemplo.com"}, "product": {"id": "exemplo"}}}
+    assert c.post("/api/cakto", json=fora).json()["ignorado"] == "produto fora do mapa"  # evento de teste da Cakto não libera nada
+    corpo = {"secret": "segredo-cakto", "event": "purchase_approved", "data": {"id": "p1", "customer": {"email": "Ana@Exemplo.com"}, "product": {"id": "prod-turbo"}}}
     assert c.post("/api/cakto", json={**corpo, "secret": "errado"}).status_code == 401
     assert c.post("/api/cakto", json=corpo).json()["liberado"] == "ana@exemplo.com"
     assert c.post("/api/cakto", json=corpo).json()["repetido"] is True
     entrar(c)
     j = c.get("/api/conta").json()
-    assert j["assinante"] is True and j["limite"] == 60 and j["plano"] == "pro"  # produto fora do mapa: Pro
-    c.post("/api/cakto", json={"secret": "segredo-cakto", "event": "refund", "data": {"id": "p1", "customer": {"email": "ana@exemplo.com"}}})
+    assert j["assinante"] is True and j["plano"] == "turbo"
+    c.post("/api/cakto", json={"secret": "segredo-cakto", "event": "refund", "data": {"id": "p1", "customer": {"email": "ana@exemplo.com"}, "product": {"id": "prod-turbo"}}})
     assert c.get("/api/conta").json()["assinante"] is False
-
 
 def test_painel_redireciona_sem_login(cli):
     c, _ = cli
@@ -456,3 +457,18 @@ def test_senha_bloqueia_depois_de_muitos_erros(cli):
     for _ in range(5):
         assert c.post("/api/entrar/senha", json={"email": "forca@exemplo.com", "senha": "x"}).status_code == 400
     assert c.post("/api/entrar/senha", json={"email": "forca@exemplo.com", "senha": "senha-certa-1"}).status_code == 429
+
+
+def test_apagar_usuario_leva_os_arquivos(cli):
+    """Spec 57 §5.1: o /admin apaga o usuário e o gancho leva a pasta de cada pedido e o vídeo enviado (disco e MinIO)."""
+    from pathlib import Path
+    from app import auth, fila
+    c, app = cli
+    db, cfg = app.state.db, app.state.cfg
+    u = auth.usuario_por_email(db, "some@t.com")
+    up = Path(cfg.dados) / "uploads"; up.mkdir(parents=True, exist_ok=True)
+    enviado = up / "abc.mp4"; enviado.write_bytes(b"x" * 10)
+    tid = fila.criar(db, u["id"], "falado", {"upload": str(enviado)})
+    pasta = fila.pasta_trabalho(cfg, tid); pasta.mkdir(parents=True, exist_ok=True); (pasta / "corte1.mp4").write_bytes(b"x")
+    assert app.state.apagar_arquivos_usuario(u) == 2
+    assert not pasta.exists() and not enviado.exists()

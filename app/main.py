@@ -42,6 +42,23 @@ def criar_app(cfg: Config | None = None, iniciar_fila: bool = True) -> FastAPI:
     admin.preparar(db)
     app = FastAPI(title="Cortaí", docs_url=None, redoc_url=None, openapi_url=None)
     app.state.cfg, app.state.db = cfg, db
+
+    def apagar_arquivos_usuario(u: dict) -> int:
+        """Apagar usuário no /admin (spec 57 §5.1): pasta de cada pedido e o vídeo que ele enviou, no disco e no MinIO."""
+        esp, uploads, n = fila.espelho(cfg), (Path(cfg.dados) / "uploads").resolve(), 0
+        for t in db.todos("SELECT id, entrada FROM trabalhos WHERE usuario=?", (u["id"],)):
+            esp.apagar_pasta(fila.pasta_trabalho(cfg, t["id"])); n += 1
+            try:
+                ent = json.loads(t["entrada"] or "{}") or {}
+            except ValueError:
+                ent = {}
+            for chave in ("upload", "arquivo"):
+                arq = ent.get(chave)
+                if isinstance(arq, str) and arq and Path(arq).resolve().is_relative_to(uploads):
+                    esp.apagar(arq); n += 1
+        return n
+
+    app.state.apagar_arquivos_usuario = apagar_arquivos_usuario
     if cfg.demo_email:  # conta de demonstração: sempre com o plano Turbo ativo
         u = auth.usuario_por_email(db, cfg.demo_email.lower())
         db.exec("UPDATE usuarios SET plano='turbo', ativo_ate=?, arroba=COALESCE(arroba,'cortaioficial'), redes=COALESCE(redes,'instagram,tiktok'), marca_cor=COALESCE(marca_cor,'#ff3d6e') WHERE id=?",
@@ -411,6 +428,8 @@ def criar_app(cfg: Config | None = None, iniciar_fila: bool = True) -> FastAPI:
         email = auth.normalizar_email((dados.get("customer") or {}).get("email"))
         if not email:
             return {"ok": True, "ignorado": "sem email"}
+        if str((dados.get("product") or {}).get("id") or "") not in cfg.planos_por_produto:  # ex.: produto de exemplo do evento de teste
+            return {"ok": True, "ignorado": "produto fora do mapa"}
         u = auth.usuario_por_email(db, email)
         if evento in ("purchase_approved", "subscription_renewed", "subscription_created"):
             base = max(agora(), u["ativo_ate"])
