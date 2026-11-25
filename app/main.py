@@ -14,7 +14,7 @@ from fastapi.responses import FileResponse, HTMLResponse, JSONResponse, Redirect
 from fastapi.staticfiles import StaticFiles
 
 from app import senha_rotas
-from produtos_core import acesso
+from produtos_core import acesso, armazenamento
 from app import auth, fila, mailer
 from app.config import Config, carregar
 from app.db import Banco, agora
@@ -85,6 +85,7 @@ def criar_app(cfg: Config | None = None, iniciar_fila: bool = True) -> FastAPI:
                      login=_login, usuario=usuario, criar_usuario=lambda email: auth.usuario_por_email(db, email),
                      produto="Cortaí", base_url=cfg.base_url, destino="/painel", cor="#ff3d6e",
                      demo_email=lambda: cfg.demo_email, demo_senha=lambda: cfg.demo_senha, dev=cfg.dev)  # cadastro e login comuns (spec 57 §5A)
+    armazenamento.registrar(app, fila.espelho(cfg).arm)  # MinIO (spec 57 §8.6)
 
     @app.post("/api/sair")
     def sair(request: Request):
@@ -260,6 +261,7 @@ def criar_app(cfg: Config | None = None, iniciar_fila: bool = True) -> FastAPI:
         if total < 10_000:
             dest.unlink(missing_ok=True)
             raise HTTPException(422, "o arquivo chegou vazio; tente de novo")
+        fila.espelho(cfg).guardar(dest)  # o vídeo do cliente também fica no MinIO
         pf = perfil_de(u)
         entrada = {"upload": str(dest), "nome": nome[:120], "perfil": {"arroba": pf["arroba"] or pf["arroba_tiktok"], "redes": pf["redes"], "cor": pf["cor"]}}
         tid = fila.criar(db, u["id"], "falado", entrada)
@@ -286,7 +288,7 @@ def criar_app(cfg: Config | None = None, iniciar_fila: bool = True) -> FastAPI:
         from app import biblioteca
         if not re.fullmatch(r"[a-z]+\.(mp4|jpg)", nome):
             raise HTTPException(404, "não encontrado")
-        p = biblioteca.pasta(cfg) / nome
+        p = fila.espelho(cfg).garantir(biblioteca.pasta(cfg) / nome)
         if not p.exists():
             raise HTTPException(404, "não encontrado")
         return FileResponse(p, media_type="video/mp4" if nome.endswith(".mp4") else "image/jpeg", filename=f"cortai-{nome}" if baixar else None)
@@ -331,6 +333,8 @@ def criar_app(cfg: Config | None = None, iniciar_fila: bool = True) -> FastAPI:
             raise HTTPException(404, "corte não encontrado")
         c = res["cortes"][n - 1]
         pasta = fila.pasta_trabalho(cfg, tid)
+        if c.get("limpo"):
+            fila.espelho(cfg).garantir(pasta / c["limpo"])
         if not c.get("limpo") or not (pasta / c["limpo"]).exists():
             raise HTTPException(409, "este corte não pode ser editado (animações, clones e cortes antigos saem prontos)")
         b = await request.json()
@@ -356,6 +360,7 @@ def criar_app(cfg: Config | None = None, iniciar_fila: bool = True) -> FastAPI:
         gancho = str(b.get("gancho") if b.get("gancho") is not None else c.get("gancho", ""))[:60]
         legenda = bool(b.get("legenda", True))
         arquivos = estilo.versoes(fonte, palavras, gancho, pasta, f"corte{n}_ed", {**perfil_de(u), "arroba": perfil_de(u)["arroba"] or perfil_de(u)["arroba_tiktok"]}, legenda)
+        fila.espelho(cfg).guardar_pasta(pasta)
         c.update({"arquivos": arquivos, "arquivo": next(iter(arquivos.values())), "gancho": gancho.upper(), "legenda_on": legenda,
                   "editado": {"aparar_inicio": a, "aparar_fim": z}, "duracao": round(dur - a - z, 1)})
         db.exec("UPDATE trabalhos SET resultado=? WHERE id=?", (json.dumps(res, ensure_ascii=False), tid))
@@ -379,7 +384,7 @@ def criar_app(cfg: Config | None = None, iniciar_fila: bool = True) -> FastAPI:
         u = usuario(request)
         if not re.fullmatch(r"(corte\d+(_ed)?(_(limpo|tiktok|instagram|youtube))?\.(mp4|jpg)|melhores_momentos\.mp4)", nome) or not db.um("SELECT 1 FROM trabalhos WHERE id=? AND usuario=?", (tid, u["id"])):
             raise HTTPException(404, "não encontrado")
-        p = fila.pasta_trabalho(cfg, tid) / nome
+        p = fila.espelho(cfg).garantir(fila.pasta_trabalho(cfg, tid) / nome)
         if not p.exists():
             raise HTTPException(410, "esse arquivo já foi apagado (guardamos por 7 dias)")
         mt = "video/mp4" if nome.endswith(".mp4") else "image/jpeg"

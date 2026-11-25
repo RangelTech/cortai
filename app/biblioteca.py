@@ -31,6 +31,9 @@ def pasta(cfg: Config) -> Path:
 
 
 def listar(cfg: Config) -> list[dict]:
+    from app.fila import espelho
+    if not any(pasta(cfg).glob("*.json")):
+        espelho(cfg).garantir_pasta(pasta(cfg))
     out = []
     for cod, nicho, _, _ in TEMAS:
         j = pasta(cfg) / f"{cod}.json"
@@ -59,6 +62,10 @@ def gerar(cfg: Config, refazer: bool = False) -> int:
                 (trab / c["capa"]).replace(pasta(cfg) / f"{cod}.jpg")
             destino.write_text(json.dumps({"codigo": cod, "nicho": nicho, "titulo": c["titulo"], "duracao": c["duracao"], "legenda": c.get("legenda", ""),
                                            "hashtags": c.get("hashtags", []), "gancho": c.get("gancho", "")}, ensure_ascii=False), encoding="utf-8")
+            from app.fila import espelho
+            for f in (pasta(cfg) / f"{cod}.mp4", pasta(cfg) / f"{cod}.jpg", destino):
+                if f.exists():
+                    espelho(cfg).guardar(f)
             feitos += 1
             log.info("biblioteca: %s pronto", cod)
         except Exception:  # noqa: BLE001

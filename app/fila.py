@@ -15,6 +15,17 @@ from app.db import Banco, agora
 log = logging.getLogger("cortai.fila")
 
 
+_ESPELHOS: dict = {}
+
+
+def espelho(cfg: Config):
+    """Arquivos no MinIO (fonte oficial), disco em cfg.dados como cache (spec 57 §8.6)."""
+    from produtos_core import armazenamento
+    if cfg.dados not in _ESPELHOS:
+        _ESPELHOS[cfg.dados] = armazenamento.Espelho(armazenamento.Armazenamento(pasta_local=str(Path(cfg.dados) / "arquivos")), cfg.dados)
+    return _ESPELHOS[cfg.dados]
+
+
 def pasta_trabalho(cfg: Config, tid: str) -> Path:
     return Path(cfg.dados) / "trabalhos" / tid
 
@@ -71,9 +82,10 @@ def _rodar(db: Banco, cfg: Config, t: dict) -> None:
             _marcar(res, pasta, entrada.get("perfil"))
         elif t["tipo"] == "falado":
             from app import falado
-            res = falado.editar_falado(Path(entrada["upload"]), pasta, cfg, avisar, entrada.get("perfil"))
+            res = falado.editar_falado(espelho(cfg).garantir(Path(entrada["upload"])), pasta, cfg, avisar, entrada.get("perfil"))
         else:
             raise pipeline.ErroUsuario("Esse tipo de pedido ainda não está disponível.")
+        espelho(cfg).guardar_pasta(pasta)  # resultado no MinIO antes de aparecer como pronto
         db.exec("UPDATE trabalhos SET estado='pronto', etapa='Pronto', progresso=1, resultado=?, fim=? WHERE id=?",
                 (json.dumps(res, ensure_ascii=False), agora(), tid))
         u = db.um("SELECT email FROM usuarios WHERE id=?", (t["usuario"],))
@@ -119,7 +131,7 @@ def limpar_antigos(db: Banco, cfg: Config) -> int:
     demo = (cfg.demo_email or "").lower()
     for t in db.todos("""SELECT t.id FROM trabalhos t JOIN usuarios u ON u.id=t.usuario WHERE t.fim IS NOT NULL AND t.fim<?
                          AND (t.entrada NOT LIKE '%\"apagado\"%') AND u.email<>?""", (limite, demo)):  # exemplos da demonstração não somem
-        pipeline.limpar_pasta(pasta_trabalho(cfg, t["id"]))
+        espelho(cfg).apagar_pasta(pasta_trabalho(cfg, t["id"]))  # disco e MinIO
         db.exec("UPDATE trabalhos SET entrada=json_set(entrada,'$.apagado',1) WHERE id=?", (t["id"],))
         n += 1
     return n
